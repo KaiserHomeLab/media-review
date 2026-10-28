@@ -63,7 +63,7 @@ One user's report that a specific copy of a Title is broken or poor quality, ask
 _Avoid_: File vote, bad-file downvote, complaint
 
 **Keep**:
-The Owner's decision to leave a Title in the library after review. A Keep clears all of the Title's Downvotes, so it starts again from zero.
+The Owner's decision to leave a Title in the library after review, made from the Review Queue or while the Title is Leaving Soon. A Keep clears all of the Title's Downvotes, so it starts again from zero.
 _Avoid_: Approve, reject, dismiss
 
 **Remove**:

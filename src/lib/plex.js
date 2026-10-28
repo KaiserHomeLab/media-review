@@ -21,6 +21,21 @@ function plex(cfg) {
   });
   /** @param {string} path */
   const server = path => fetchJson(f, 'Plex', join(cfg.url, path), { headers: { 'X-Plex-Token': cfg.token } });
+  // A change on the server (POST, PUT, DELETE). Plex often answers these with an empty body.
+  /** @param {string} method @param {string} path */
+  const change = async (method, path) => {
+    const res = await f(join(cfg.url, path), {
+      method,
+      headers: { Accept: 'application/json', 'X-Plex-Token': cfg.token },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new Error(`Plex answered HTTP ${res.status} to ${method} ${path.split('?')[0]}`);
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  };
+  /** @param {string} machineId @param {string[]} keys */
+  const itemsUri = (machineId, keys) =>
+    `server://${machineId}/com.plexapp.plugins.library/library/metadata/${keys.join(',')}`;
 
   return {
     // ---------------------------------------------------------------- sign-in (plex.tv)
@@ -62,7 +77,7 @@ function plex(cfg) {
     machineId: async () => (await server('/identity')).MediaContainer.machineIdentifier,
 
     // Every whole movie and whole show, across all movie and show libraries.
-    /** @returns {Promise<Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year: number | null, thumb: string | null, library: string }>>} */
+    /** @returns {Promise<Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year: number | null, thumb: string | null, library: string, libraryKey: string }>>} */
     async titles() {
       const sections = /** @type {any[]} */ ((await server('/library/sections')).MediaContainer.Directory ?? []);
       const out = [];
@@ -78,9 +93,72 @@ function plex(cfg) {
             year: m.year ?? null,
             thumb: m.thumb ?? null,
             library: String(s.title), // as named in Plex: Movies, TV Shows, Anime…
+            libraryKey: String(s.key),
           });
       }
       return out;
+    },
+
+    // ---------------------------------------------------------------- collections (Leaving Soon)
+    // The same calls Plex Web makes. A pinned collection is a "managed hub" of its library, identified as
+    // custom.collection.<section>.<collection>.
+
+    /** @param {string} section @param {string} title @returns {Promise<string | null>} the collection's ratingKey */
+    async findCollection(section, title) {
+      const c = /** @type {any[]} */ (
+        (await server(`/library/sections/${section}/collections`)).MediaContainer.Metadata ?? []
+      );
+      return c.find(x => x.title === title)?.ratingKey?.toString() ?? null;
+    },
+
+    /** @param {string} id @returns {Promise<string[]>} */
+    async collectionItems(id) {
+      const items = /** @type {any[]} */ (
+        (await server(`/library/collections/${id}/children`)).MediaContainer.Metadata ?? []
+      );
+      return items.map(m => String(m.ratingKey));
+    },
+
+    /**
+     * @param {string} section @param {'movie' | 'show'} kind @param {string} title @param {string} machineId
+     * @param {string[]} keys at least one: Plex makes a collection from its first items
+     * @returns {Promise<string>} the new collection's ratingKey
+     */
+    async createCollection(section, kind, title, machineId, keys) {
+      const qs = new URLSearchParams({
+        type: kind === 'movie' ? '1' : '2',
+        title,
+        smart: '0',
+        sectionId: section,
+        uri: itemsUri(machineId, keys),
+      });
+      const made = await change('POST', `/library/collections?${qs}`);
+      const id = made?.MediaContainer?.Metadata?.[0]?.ratingKey;
+      if (id == null) throw new Error('Plex made the collection but did not say its id');
+      return String(id);
+    },
+
+    /** @param {string} id @param {string} machineId @param {string[]} keys */
+    addToCollection: (id, machineId, keys) =>
+      change('PUT', `/library/collections/${id}/items?${new URLSearchParams({ uri: itemsUri(machineId, keys) })}`),
+
+    /** @param {string} id @param {string} key */
+    removeFromCollection: (id, key) => change('DELETE', `/library/collections/${id}/items/${key}`),
+
+    /** @param {string} id */
+    deleteCollection: id => change('DELETE', `/library/metadata/${id}`),
+
+    // Pinned to the library's Recommended tab, the Owner's Home and friends' Home (the Owner's choice).
+    /** @param {string} section @param {string} id */
+    async pinCollection(section, id) {
+      const pins = 'promotedToRecommended=1&promotedToOwnHome=1&promotedToSharedHome=1';
+      const identifier = `custom.collection.${section}.${id}`;
+      const hubs = /** @type {any[]} */ ((await server(`/hubs/sections/${section}/manage`)).MediaContainer.Hub ?? []);
+      const hub = hubs.find(h => h.identifier === identifier);
+      if (!hub) return change('POST', `/hubs/sections/${section}/manage?metadataItemId=${id}&${pins}`);
+      if (!(hub.promotedToRecommended && hub.promotedToOwnHome && hub.promotedToSharedHome))
+        return change('PUT', `/hubs/sections/${section}/manage/${encodeURIComponent(identifier)}?${pins}`);
+      return null;
     },
 
     // A poster, resized by Plex, as a fetch Response to stream to the browser.

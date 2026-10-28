@@ -251,6 +251,12 @@ h2 .count {
 .btn.ghost {
   background: transparent;
 }
+.btn.danger {
+  color: var(--critical);
+}
+.btn.danger:hover {
+  border-color: var(--critical);
+}
 .chip {
   font: 11px var(--mono);
   padding: 2px 7px;
@@ -283,6 +289,9 @@ h2 .count {
 .seg button[aria-selected='true'] {
   color: var(--text-primary);
   border-color: var(--accent);
+}
+.seg button.leaving {
+  color: var(--accent);
 }
 .seg .n {
   font: 11px var(--mono);

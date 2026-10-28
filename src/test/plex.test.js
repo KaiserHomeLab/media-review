@@ -37,9 +37,33 @@ test('Plex Titles carry their library, from movie and show libraries only', asyn
     ),
   });
   assert.deepEqual(await p.titles(), [
-    { ratingKey: '10', kind: 'movie', title: 'Dull Movie', year: 2020, thumb: null, library: 'Movies' },
-    { ratingKey: '20', kind: 'show', title: 'Slow Show', year: null, thumb: null, library: 'TV Shows' },
-    { ratingKey: '30', kind: 'show', title: 'Loud Anime', year: null, thumb: '/t/30', library: 'Anime' },
+    {
+      ratingKey: '10',
+      kind: 'movie',
+      title: 'Dull Movie',
+      year: 2020,
+      thumb: null,
+      library: 'Movies',
+      libraryKey: '1',
+    },
+    {
+      ratingKey: '20',
+      kind: 'show',
+      title: 'Slow Show',
+      year: null,
+      thumb: null,
+      library: 'TV Shows',
+      libraryKey: '2',
+    },
+    {
+      ratingKey: '30',
+      kind: 'show',
+      title: 'Loud Anime',
+      year: null,
+      thumb: '/t/30',
+      library: 'Anime',
+      libraryKey: '3',
+    },
   ]);
 });
 
