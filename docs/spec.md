@@ -7,6 +7,7 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 ## Environment
 
 - Runs as one Docker container on the Owner's Unraid server, next to Plex, Sonarr, Radarr, Tautulli and Seerr.
+- Anime has its own Plex library and its own Sonarr instance, separate from TV.
 - Holds its own keys for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord (ADR 0002, Consequences).
 - Keeps working while Media Ops is down. Only the Owner's queue screen is unavailable then.
 
@@ -50,7 +51,7 @@ A Review Queue entry includes: the Title, its Audience size, the Downvote weight
 ### Vote Weight
 
 - Vote Weight = Base Weight + Title Bonus.
-- Base Weight ranges from 0 (no watching in the window) to 1 (heavy user), from the Voter's watching on the whole server over the Base Weight window.
+- Base Weight ranges from 0 (no watching in the window) to 1 (heavy user): the Voter's watch time on the whole server over the Base Weight window, divided by the heaviest Voter's.
 - Title Bonus applies on a Title the Voter has Sampled.
 - Vote Weight is computed when the threshold is checked, not frozen at the moment of the Downvote. Once a Title is queued, its Downvotes are frozen (see below).
 
@@ -66,6 +67,7 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 ### Downvotes
 
 - One Downvote per Voter per Title. A Title is a whole movie or a whole show.
+- A Voter can Downvote a Title they haven't Sampled. It is kept but only counts once they Sample it, and they're told so when they cast it and while it's waiting.
 - A Downvote never removes anything by itself and never expires on a timer.
 - Before the Title is queued:
   - the Voter can withdraw their own Downvote.
@@ -120,13 +122,13 @@ Changing a setting re-runs the threshold check for every Title that isn't queued
 
 ## Open questions
 
-Each one is assigned to the ticket that has to answer it.
+Each one is assigned to the ticket that has to answer it. Answered ones stay here as the record.
 
 - **Q1. Seerr hold-back.** Can Seerr hold back an auto-approved request for a previously Removed Title so it goes to the Owner? Fallback: block it in Radarr/Sonarr. Ticket 0008.
-- **Q2. Anime vs TV.** How to tell them apart for the Sample length: a separate Sonarr instance, the series type, or the Plex library. The two defaults are equal (10 minutes), so this doesn't block anything until the Owner sets them apart. Ticket 0011.
+- **Q2. Anime vs TV.** *Answered by the Owner.* Anime has its own Plex library and its own Sonarr instance. Media Review tells anime from TV by Plex library, and deletes an anime Title through the anime Sonarr. Tickets 0011 and 0005.
 - **Q3. Tautulli play duration.** *Answered in 0001, from Tautulli's API documentation; not yet checked against the Owner's server.* `get_history` with `grouping=0` returns one row per session with `user_id` (the Plex account id), `media_type`, `rating_key` (and `grandparent_rating_key`, the show, for episodes), `play_duration` in seconds with pauses excluded (`duration` before Tautulli 2.13) and `watched_status` (1 when Tautulli counts it as finished: a Watch). Media Review adds these up per Voter per Title. `get_users` lists the Voters: everyone but the admin (the Owner) and the Local user, and only those still active.
-- **Q4. Base Weight curve.** How watching maps onto 0–1. Proposal: the Voter's watch time in the window divided by the heaviest Voter's watch time in the window. Confirm with the Owner in ticket 0001.
-- **Q5. Downvotes from outside the Audience.** The threshold counts the weight of Audience members' Downvotes ("enough of its Audience's weight is behind Downvotes"). A Voter who hasn't Sampled the Title can still cast a Downvote. It is kept and counts as soon as they Sample the Title. Confirm with the Owner in ticket 0001.
+- **Q4. Base Weight curve.** *Answered by the Owner:* a Voter's watch time in the window divided by the heaviest Voter's. Built in 0001.
+- **Q5. Downvotes from outside the Audience.** *Answered by the Owner:* a Downvote from a Voter who hasn't Sampled the Title is kept and counts once they Sample it, and the Voter is told it won't count until then. Built in 0001.
 
 ## Out of scope
 

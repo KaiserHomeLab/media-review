@@ -74,6 +74,14 @@ function castDownvote(store, s, voterId, titleKey, now) {
   return { ok: true, queued: evaluate(store, s, titleKey, now) };
 }
 
+// Which Titles one Voter has Sampled: their Downvote only counts on those (Q5), and they're told so.
+/** @param {Store} store @param {Settings} s @param {string} voterId */
+function sampledBy(store, s, voterId) {
+  const plays = store.playsBy(voterId);
+  return (/** @type {{ rating_key: string, kind: 'movie' | 'show' }} */ t) =>
+    hasSampled(t.kind, plays.get(t.rating_key) ?? [], s);
+}
+
 // What Media Ops shows. Only the Owner reaches this (through the API key), so it names each Voter.
 /** @param {Store} store */
 function reviewQueue(store) {
@@ -110,4 +118,4 @@ function reviewQueue(store) {
 /** @param {number} n */
 const round = n => Math.round(n * 100) / 100;
 
-module.exports = { evaluate, evaluateAll, castDownvote, reviewQueue };
+module.exports = { evaluate, evaluateAll, castDownvote, sampledBy, reviewQueue };

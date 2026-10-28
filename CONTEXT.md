@@ -19,7 +19,7 @@ A whole movie or a whole show: the thing a Downvote is cast against.
 _Avoid_: Item, media, entry
 
 **Downvote**:
-One user's signal that they think a title should leave the library. A downvote never removes anything by itself, never expires on a timer, and is withdrawn if the Voter has a Watch of the Title afterwards. A Voter can also withdraw their own Downvote until the Title reaches the Review Queue. Once a Title is queued its Downvotes are frozen: a later Watch by a downvoter is shown to the Owner but withdraws nothing.
+One user's signal that they think a title should leave the library. A downvote never removes anything by itself, never expires on a timer, and is withdrawn if the Voter has a Watch of the Title afterwards. A Voter can also withdraw their own Downvote until the Title reaches the Review Queue. A Downvote on a Title the Voter hasn't Sampled is kept, but only counts once they Sample it, and they're told so. Once a Title is queued its Downvotes are frozen: a later Watch by a downvoter is shown to the Owner but withdraws nothing.
 _Avoid_: Delete vote, removal request
 
 **Watch**:
@@ -27,7 +27,7 @@ A play the server counts as finished: a whole movie, or one full episode of a sh
 _Avoid_: Play, view, rewatch
 
 **Sample**:
-A play of a Title long enough to count as a real try, finished or not. A movie needs more time than a show to count, and time adds up across all of a Title's episodes and sessions. Every Watch is also a Sample; accidental plays are neither.
+A play of a Title long enough to count as a real try, finished or not. A movie needs more time than a show to count, and anime can have its own length; time adds up across all of a Title's episodes and sessions. Every Watch is also a Sample; accidental plays are neither.
 _Avoid_: Partial watch, tried, started
 
 **Voter**:

@@ -97,6 +97,7 @@ test('a shared account signs in as a Voter, and the Owner is not a Voter', async
     plexId: 'a',
     username: 'alice',
     isOwner: false,
+    sampleMinutes: { movie: 30, show: 10 },
   });
   const owner = await signIn(1);
   assert.equal((await (await req('/api/me', { cookie: owner.cookie })).json()).isOwner, true);
@@ -200,4 +201,16 @@ test('Media Ops gets posters through the API key, not a Plex token', async () =>
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('content-type'), 'image/jpeg');
   assert.equal(await res.text(), 'img');
+});
+
+test('a Voter who has not Sampled a Title is told their Downvote will not count until they do', async () => {
+  const { signIn, req, post, store } = await setup();
+  const alice = (await signIn(2)).cookie;
+  const title = async () => (await (await req('/api/titles', { cookie: alice })).json()).titles[0];
+
+  assert.equal((await title()).sampled, false);
+  assert.deepEqual(await (await post(alice, '/api/titles/m1/downvote')).json(), { downvoted: true, counts: false });
+
+  store.upsertPlays([{ id: 'p', voterId: 'a', titleKey: 'm1', started: NOW - 60, seconds: 30 * 60, watched: false }]);
+  assert.equal((await title()).sampled, true);
 });

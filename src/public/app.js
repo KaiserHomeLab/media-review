@@ -47,11 +47,21 @@ function card(t) {
   meta.textContent = [t.kind === 'movie' ? 'Movie' : 'Show', t.year].filter(Boolean).join(' · ');
   body.append(name, meta);
 
+  // A Downvote only counts once the Voter has given the Title a real try (a Sample), so say so.
+  const untried = !t.sampled && !t.inReview && !me.isOwner;
+  const tryNote = () => {
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = `Counts once you've watched ${me.sampleMinutes[t.kind]} minutes of it.`;
+    return note;
+  };
+
   if (t.inReview || t.downvoted || me.isOwner) {
     const state = document.createElement('div');
     state.className = 'state';
     state.textContent = t.inReview ? 'With the Owner for review' : t.downvoted ? 'You Downvoted this' : '';
     body.append(state);
+    if (t.downvoted && untried) body.append(tryNote());
   } else {
     const btn = document.createElement('button');
     btn.textContent = 'Downvote';
@@ -69,6 +79,7 @@ function card(t) {
       li.replaceWith(card(t));
     });
     body.append(btn);
+    if (untried) body.append(tryNote());
   }
   li.append(img, body);
   return li;

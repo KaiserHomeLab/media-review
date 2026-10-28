@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
-const { castDownvote, reviewQueue } = require('./review');
+const { castDownvote, sampledBy, reviewQueue } = require('./review');
 
 const SESSION_DAYS = 30;
 const VERSION = require('../package.json').version;
@@ -143,7 +143,12 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
 
     if (m === 'GET' && p === '/api/me') {
       const v = store.voter(s.plexId);
-      return json(res, 200, { plexId: s.plexId, username: v?.username ?? 'Owner', isOwner: s.isOwner });
+      return json(res, 200, {
+        plexId: s.plexId,
+        username: v?.username ?? 'Owner',
+        isOwner: s.isOwner,
+        sampleMinutes: { movie: settings.sampleMovieMinutes, show: settings.sampleShowMinutes },
+      });
     }
     if (m === 'POST' && p === '/api/logout') {
       const token = cookiesOf(req).mr_session;
@@ -154,6 +159,7 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
 
     if (m === 'GET' && p === '/api/titles') {
       const mine = store.downvotedBy(s.plexId);
+      const sampled = sampledBy(store, settings, s.plexId);
       const q = (url.searchParams.get('q') ?? '').slice(0, 100);
       const titles = store.searchTitles(q, 60).map(t => ({
         ratingKey: t.rating_key,
@@ -162,6 +168,7 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
         year: t.year,
         poster: t.thumb ? `/poster/${encodeURIComponent(t.rating_key)}` : null,
         downvoted: mine.has(t.rating_key), // a Voter sees only their own Downvotes
+        sampled: sampled(t), // their Downvote only counts once this is true
         inReview: store.isQueued(t.rating_key),
       }));
       return json(res, 200, { titles });
@@ -170,8 +177,12 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
     const dv = p.match(/^\/api\/titles\/([^/]+)\/downvote$/);
     if (m === 'POST' && dv) {
       if (s.isOwner) return json(res, 403, { error: 'The Owner decides in Media Ops and does not Downvote.' });
-      const r = castDownvote(store, settings, s.plexId, decodeURIComponent(dv[1]), now());
-      if (r.ok) return json(res, 201, { downvoted: true });
+      const key = decodeURIComponent(dv[1]);
+      const r = castDownvote(store, settings, s.plexId, key, now());
+      if (r.ok) {
+        const t = /** @type {import('./store').TitleRow} */ (store.title(key));
+        return json(res, 201, { downvoted: true, counts: sampledBy(store, settings, s.plexId)(t) });
+      }
       const status = { 'unknown-title': 404, 'already-downvoted': 409, queued: 409 }[r.error];
       return json(res, status, { error: r.error });
     }
