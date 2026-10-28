@@ -8,6 +8,15 @@ const { fetchJson, join } = require('./http');
 /** @typedef {import('./http').Fetch} Fetch */
 
 const PLEX_TV = 'https://plex.tv';
+
+// The ids Radarr and Sonarr know a Title by, from Plex's Guid list (tmdb://603, tvdb://81189, …).
+/** @param {unknown} guids @returns {{ tmdbId: string | null, tvdbId: string | null }} */
+function externalIds(guids) {
+  const ids = /** @type {any[]} */ (Array.isArray(guids) ? guids : []).map(g => String(g?.id ?? ''));
+  /** @param {string} scheme */
+  const find = scheme => ids.find(id => id.startsWith(`${scheme}://`))?.slice(scheme.length + 3) || null;
+  return { tmdbId: find('tmdb'), tvdbId: find('tvdb') };
+}
 const PRODUCT = 'Media Review';
 
 /** @param {{ url: string, token: string, clientId: string, fetch?: Fetch, plexTv?: string }} cfg */
@@ -77,13 +86,14 @@ function plex(cfg) {
     machineId: async () => (await server('/identity')).MediaContainer.machineIdentifier,
 
     // Every whole movie and whole show, across all movie and show libraries.
-    /** @returns {Promise<Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year: number | null, thumb: string | null, library: string, libraryKey: string }>>} */
+    /** @returns {Promise<Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year: number | null, thumb: string | null, library: string, libraryKey: string,
+     *   tmdbId: string | null, tvdbId: string | null }>>} */
     async titles() {
       const sections = /** @type {any[]} */ ((await server('/library/sections')).MediaContainer.Directory ?? []);
       const out = [];
       for (const s of sections.filter(x => x.type === 'movie' || x.type === 'show')) {
         const items = /** @type {any[]} */ (
-          (await server(`/library/sections/${s.key}/all`)).MediaContainer.Metadata ?? []
+          (await server(`/library/sections/${s.key}/all?includeGuids=1`)).MediaContainer.Metadata ?? []
         );
         for (const m of items)
           out.push({
@@ -94,6 +104,7 @@ function plex(cfg) {
             thumb: m.thumb ?? null,
             library: String(s.title), // as named in Plex: Movies, TV Shows, Anime…
             libraryKey: String(s.key),
+            ...externalIds(m.Guid),
           });
       }
       return out;

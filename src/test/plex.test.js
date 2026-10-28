@@ -22,8 +22,16 @@ test('Plex Titles carry their library, from movie and show libraries only', asyn
         ],
       },
     },
-    '/library/sections/1/all': { MediaContainer: { Metadata: [{ ratingKey: 10, title: 'Dull Movie', year: 2020 }] } },
-    '/library/sections/2/all': { MediaContainer: { Metadata: [{ ratingKey: 20, title: 'Slow Show' }] } },
+    '/library/sections/1/all': {
+      MediaContainer: {
+        Metadata: [
+          { ratingKey: 10, title: 'Dull Movie', year: 2020, Guid: [{ id: 'imdb://tt01' }, { id: 'tmdb://603' }] },
+        ],
+      },
+    },
+    '/library/sections/2/all': {
+      MediaContainer: { Metadata: [{ ratingKey: 20, title: 'Slow Show', Guid: [{ id: 'tvdb://81189' }] }] },
+    },
     '/library/sections/3/all': {
       MediaContainer: { Metadata: [{ ratingKey: 30, title: 'Loud Anime', thumb: '/t/30' }] },
     },
@@ -45,6 +53,8 @@ test('Plex Titles carry their library, from movie and show libraries only', asyn
       thumb: null,
       library: 'Movies',
       libraryKey: '1',
+      tmdbId: '603',
+      tvdbId: null,
     },
     {
       ratingKey: '20',
@@ -54,6 +64,8 @@ test('Plex Titles carry their library, from movie and show libraries only', asyn
       thumb: null,
       library: 'TV Shows',
       libraryKey: '2',
+      tmdbId: null,
+      tvdbId: '81189',
     },
     {
       ratingKey: '30',
@@ -63,6 +75,8 @@ test('Plex Titles carry their library, from movie and show libraries only', asyn
       thumb: '/t/30',
       library: 'Anime',
       libraryKey: '3',
+      tmdbId: null,
+      tvdbId: null,
     },
   ]);
 });

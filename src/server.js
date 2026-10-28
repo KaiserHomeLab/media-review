@@ -15,6 +15,8 @@ const { DEFAULTS } = require('./lib/rules');
 const { sync } = require('./lib/sync');
 const { createApp } = require('./lib/web');
 const { syncLeavingSoon } = require('./lib/collections');
+const { arr } = require('./lib/arr');
+const { runDeletions } = require('./lib/deletions');
 
 /** @param {string} name */
 const need = name => {
@@ -38,6 +40,16 @@ if (!clientId) store.setSetting('plexClientId', (clientId = crypto.randomUUID())
 
 const plex = plexClient({ url: need('PLEX_URL'), token: need('PLEX_TOKEN'), clientId });
 const tautulli = tautulliClient({ url: need('TAUTULLI_URL'), apiKey: need('TAUTULLI_API_KEY') });
+
+// Where Leaving Soon Titles are deleted from. Each is optional; a Title its kind has no app for is
+// left Leaving Soon, and the Owner is told.
+const arrs = /** @type {const} */ ([
+  ['Radarr', 'radarr', 'RADARR'],
+  ['Sonarr', 'sonarr', 'SONARR'],
+  ['Sonarr (anime)', 'sonarr', 'SONARR_ANIME'],
+])
+  .filter(([, , env]) => process.env[`${env}_URL`])
+  .map(([name, kind, env]) => arr({ name, kind, url: need(`${env}_URL`), apiKey: need(`${env}_API_KEY`) }));
 
 /** @type {Promise<string> | null} */
 let machine = null;
@@ -91,6 +103,8 @@ const runSync = async () => {
   running = true;
   try {
     await sync({ store, plex, tautulli, settings: DEFAULTS, now, log });
+    // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up.
+    await runDeletions({ store, arrs, settings: DEFAULTS, now, log });
     await updateCollections();
   } finally {
     running = false;

@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const path = require('node:path');
 const { openStore } = require('../lib/store');
-const { DEFAULTS } = require('../lib/rules');
+const { DEFAULTS, quietTime } = require('../lib/rules');
 const { createApp } = require('../lib/web');
 
 const NOW = 1_800_000_000;
@@ -350,12 +350,13 @@ test('Remove and Keep after all, from Media Review and from Media Ops; Voters se
   // Owner removes it in Media Review.
   assert.equal((await post(voters[0], '/api/owner/review-queue/m1/remove')).status, 403);
   const removed = await (await post(owner, '/api/owner/review-queue/m1/remove')).json();
-  assert.deepEqual(removed, { removed: true, endsAt: new Date((NOW + 14 * 86400) * 1000).toISOString() });
+  const ends = quietTime(NOW + 14 * 86400, 4);
+  assert.deepEqual(removed, { removed: true, endsAt: new Date(ends * 1000).toISOString() });
   assert.equal(changes, 1);
 
   // Voters: the tile says 14 days, the Leaving Soon tab lists it, and nobody's name is in either.
   const tile = (await (await req('/api/titles', { cookie: voters[2] })).json()).titles[0];
-  assert.equal(tile.leavingInDays, 14);
+  assert.equal(tile.leavingInDays, Math.ceil((ends - NOW) / 86400));
   const tab = (await (await req('/api/titles?leaving=1', { cookie: voters[2] })).json()).titles;
   assert.deepEqual(
     tab.map((/** @type {any} */ t) => t.title),
@@ -371,7 +372,7 @@ test('Remove and Keep after all, from Media Review and from Media Ops; Voters se
   const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
   const key = { 'x-api-key': apiKey };
   const viaOps = await (await req('/api/v1/leaving-soon', { headers: key })).json();
-  assert.equal(viaOps.leavingSoon[0].daysLeft, 14);
+  assert.equal(viaOps.leavingSoon[0].daysLeft, Math.ceil((ends - NOW) / 86400));
   const queueKeep = await req('/api/v1/review-queue/m1/keep', { method: 'POST', headers: key });
   assert.deepEqual(await queueKeep.json(), { error: 'not-queued' });
   const keptAfterAll = await req('/api/v1/leaving-soon/m1/keep', { method: 'POST', headers: key });
@@ -381,4 +382,21 @@ test('Remove and Keep after all, from Media Review and from Media Ops; Voters se
   const again = await post(owner, '/api/owner/leaving-soon/m1/keep');
   assert.deepEqual(await again.json(), { error: 'not-leaving' });
   assert.equal((await post(owner, '/api/owner/leaving-soon/m1/remove')).status, 404);
+});
+
+test('why a deletion failed is shown to the Owner and Media Ops, never to Voters', async () => {
+  const { signIn, req, post, store } = await setup();
+  const owner = (await signIn(1)).cookie;
+  const alice = (await signIn(2)).cookie;
+  store.remove('m1', NOW - 86400, NOW);
+  store.deleteFailed('m1', 'not found in Radarr, so nothing was deleted', []);
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+
+  const forOwner = (await (await req('/api/owner/leaving-soon', { cookie: owner })).json()).leavingSoon[0];
+  assert.equal(forOwner.deleteError, 'not found in Radarr, so nothing was deleted');
+  const forOps = (await (await req('/api/v1/leaving-soon', { headers: { 'x-api-key': apiKey } })).json())
+    .leavingSoon[0];
+  assert.equal(forOps.deleteError, 'not found in Radarr, so nothing was deleted');
+  const forAlice = (await (await req('/api/leaving-soon', { cookie: alice })).json()).leavingSoon[0];
+  assert.equal('deleteError' in forAlice, false);
 });

@@ -4,7 +4,7 @@
 // Applies the rules to what the store holds: casting a Downvote, checking a Title against the
 // threshold, and building the Review Queue that Media Ops shows.
 'use strict';
-const { hasSampled, baseWeights, voteWeight, checkThreshold } = require('./rules');
+const { hasSampled, baseWeights, voteWeight, checkThreshold, quietTime } = require('./rules');
 
 /** @typedef {import('./rules').Settings} Settings @typedef {import('./store').Store} Store */
 
@@ -110,14 +110,16 @@ function keep(store, titleKey, now) {
  */
 function remove(store, s, titleKey, now) {
   if (!store.isQueued(titleKey)) return { ok: false, error: 'not-queued' };
-  const endsAt = now + s.leavingSoonDays * DAY;
+  // It ends overnight, so the day friends are shown is the night it goes.
+  const endsAt = quietTime(now + s.leavingSoonDays * DAY, s.deleteHour);
   store.remove(titleKey, now, endsAt);
   return { ok: true, endsAt };
 }
 
-// Everything Leaving Soon, soonest first. Shown to everyone, so it never says who Downvoted.
-/** @param {Store} store @param {number} now */
-function leavingSoon(store, now) {
+// Everything Leaving Soon, soonest first. Shown to everyone, so it never says who Downvoted. The Owner
+// (and Media Ops) also see why a deletion failed.
+/** @param {Store} store @param {number} now @param {{ owner?: boolean }} [opts] */
+function leavingSoon(store, now, opts = {}) {
   return store.leavingSoon().map(l => {
     const t = store.title(l.title_key);
     return {
@@ -129,6 +131,7 @@ function leavingSoon(store, now) {
       removedAt: iso(l.removed_at),
       endsAt: iso(l.ends_at),
       daysLeft: Math.max(0, Math.ceil((l.ends_at - now) / DAY)),
+      ...(opts.owner ? { deleteError: l.delete_error ?? null } : {}),
     };
   });
 }

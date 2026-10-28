@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { openStore } = require('../lib/store');
-const { DEFAULTS } = require('../lib/rules');
+const { DEFAULTS, quietTime } = require('../lib/rules');
 const {
   castDownvote,
   withdrawDownvote,
@@ -195,10 +195,11 @@ const queued = t => {
   castDownvote(t.store, DEFAULTS, 'b', 'm1', NOW);
 };
 
-test('Remove takes a queued Title into Leaving Soon for 14 days, and nothing is deleted', () => {
+test('Remove takes a queued Title into Leaving Soon for 14 days, ending overnight, and nothing is deleted', () => {
   const t = setup();
   queued(t);
-  assert.deepEqual(remove(t.store, DEFAULTS, 'm1', NOW + 60), { ok: true, endsAt: NOW + 60 + 14 * DAY });
+  const ends = quietTime(NOW + 60 + 14 * DAY, 4);
+  assert.deepEqual(remove(t.store, DEFAULTS, 'm1', NOW + 60), { ok: true, endsAt: ends });
   assert.deepEqual(reviewQueue(t.store), []);
   assert.deepEqual(leavingSoon(t.store, NOW + 60 + DAY), [
     {
@@ -208,8 +209,8 @@ test('Remove takes a queued Title into Leaving Soon for 14 days, and nothing is 
       year: 2020,
       library: null,
       removedAt: new Date((NOW + 60) * 1000).toISOString(),
-      endsAt: new Date((NOW + 60 + 14 * DAY) * 1000).toISOString(),
-      daysLeft: 13,
+      endsAt: new Date(ends * 1000).toISOString(),
+      daysLeft: Math.ceil((ends - (NOW + 60 + DAY)) / DAY),
     },
   ]);
   assert.ok(t.store.title('m1'), 'still in the catalogue');

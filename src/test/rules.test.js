@@ -126,3 +126,31 @@ test('Downvotes from Voters outside the Audience are kept but carry no weight (Q
   assert.equal(r.downvoteWeight, 0);
   assert.equal(r.reached, false);
 });
+
+// ------------------------------------------------------------------ 0005: overnight deletion
+// Server time decides "overnight"; pin a zone so these mean the same on every machine.
+process.env.TZ = 'Europe/Amsterdam';
+const { quietTime, inQuietWindow } = require('../lib/rules');
+/** @param {string} local e.g. '2026-11-12 22:41' in Amsterdam time @returns {number} unix seconds */
+const at = local => Math.floor(new Date(local.replace(' ', 'T')).getTime() / 1000);
+
+test('Leaving Soon ends at the first 04:00 at or after its length runs out', () => {
+  assert.equal(quietTime(at('2026-11-11 22:41'), 4), at('2026-11-12 04:00'));
+  assert.equal(quietTime(at('2026-11-12 03:59'), 4), at('2026-11-12 04:00'));
+  assert.equal(quietTime(at('2026-11-12 04:00'), 4), at('2026-11-12 04:00'));
+  assert.equal(quietTime(at('2026-11-12 04:01'), 4), at('2026-11-13 04:00'));
+});
+
+test('04:00 is 04:00 local time across a daylight-saving change', () => {
+  // Clocks go back on 25 October 2026 in Amsterdam.
+  assert.equal(quietTime(at('2026-10-24 12:00'), 4), at('2026-10-25 04:00'));
+  assert.equal(new Date(quietTime(at('2026-10-25 12:00'), 4) * 1000).getHours(), 4);
+});
+
+test('deletions only run between 04:00 and 07:00', () => {
+  assert.equal(inQuietWindow(at('2026-11-12 03:59'), 4), false);
+  assert.equal(inQuietWindow(at('2026-11-12 04:00'), 4), true);
+  assert.equal(inQuietWindow(at('2026-11-12 06:59'), 4), true);
+  assert.equal(inQuietWindow(at('2026-11-12 07:00'), 4), false);
+  assert.equal(inQuietWindow(at('2026-11-12 13:00'), 4), false);
+});
