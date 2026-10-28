@@ -25,3 +25,6 @@ number, a fix the last one.
 - The same look as Media Ops: colours, light mode, the Inter font, cards and buttons.
 - A Docker image (`ghcr.io/kaiserhomelab/media-review`) on the linuxserver.io Alpine base, and an
   Unraid template.
+- First setup in the web app: a one-time code from the log, then Plex sign-in as the server's owner,
+  picking the server. A Settings page for the Owner: Plex, Tautulli, Radarr and Sonarrs (address, API
+  key, Test, Save), the public address, and the Media Ops key. Apps are no longer container variables.

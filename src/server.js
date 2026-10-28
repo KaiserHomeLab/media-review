@@ -2,7 +2,8 @@
 // Copyright (c) 2026 KaiserHomeLab
 //
 // Media Review: Downvotes, the Review Queue and the rules behind them, for one Plex server.
-// Configuration comes from the environment; see the README.
+// The apps it works with are set up in the web app (first setup, then Settings) and kept in /config.
+// Only DATA_DIR, PORT, SYNC_MINUTES and TZ come from the environment; see the README.
 'use strict';
 const http = require('node:http');
 const path = require('node:path');
@@ -15,18 +16,8 @@ const { DEFAULTS } = require('./lib/rules');
 const { sync } = require('./lib/sync');
 const { createApp } = require('./lib/web');
 const { syncLeavingSoon } = require('./lib/collections');
-const { arr } = require('./lib/arr');
+const { appSettings, arrsFrom } = require('./lib/apps');
 const { runDeletions } = require('./lib/deletions');
-
-/** @param {string} name */
-const need = name => {
-  const v = process.env[name];
-  if (!v) {
-    console.error(`Missing ${name}. See the README for every setting.`);
-    process.exit(1);
-  }
-  return v;
-};
 
 const dataDir = process.env.DATA_DIR ?? path.join(__dirname, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
@@ -38,26 +29,49 @@ const now = () => Math.floor(Date.now() / 1000);
 let clientId = store.getSetting('plexClientId');
 if (!clientId) store.setSetting('plexClientId', (clientId = crypto.randomUUID()));
 
-const plex = plexClient({ url: need('PLEX_URL'), token: need('PLEX_TOKEN'), clientId });
-const tautulli = tautulliClient({ url: need('TAUTULLI_URL'), apiKey: need('TAUTULLI_API_KEY') });
+const apps = appSettings(store);
 
-// Where Leaving Soon Titles are deleted from. Each is optional; a Title its kind has no app for is
-// left Leaving Soon, and the Owner is told.
-const arrs = /** @type {const} */ ([
-  ['Radarr', 'radarr', 'RADARR'],
-  ['Sonarr', 'sonarr', 'SONARR'],
-  ['Sonarr (anime)', 'sonarr', 'SONARR_ANIME'],
-])
-  .filter(([, , env]) => process.env[`${env}_URL`])
-  .map(([name, kind, env]) => arr({ name, kind, url: need(`${env}_URL`), apiKey: need(`${env}_API_KEY`) }));
+// Clients read their address and key from Settings on every call, so a change applies straight away.
+const plex = plexClient({
+  clientId,
+  get url() {
+    return apps.read().plex?.url ?? '';
+  },
+  get token() {
+    return apps.read().plex?.token ?? '';
+  },
+});
+const tautulliCfg = {
+  get url() {
+    return apps.read().tautulli?.url ?? '';
+  },
+  get apiKey() {
+    return apps.read().tautulli?.apiKey ?? '';
+  },
+};
+const tautulli = tautulliClient(tautulliCfg);
+const machineId = async () => {
+  const p = apps.read().plex;
+  if (!p) throw new Error('Plex is not set up yet');
+  return p.machineId;
+};
 
-/** @type {Promise<string> | null} */
-let machine = null;
-const machineId = () =>
-  (machine ??= plex.machineId().catch(e => {
-    machine = null; // try again on the next sign-in
-    throw e;
-  }));
+// Until first setup is done, a one-time code in the log is what lets the Owner claim this install.
+/** @type {string | null} */
+let setupCode = null;
+if (!apps.isSetUp()) {
+  const raw = crypto
+    .randomBytes(6)
+    .toString('base64url')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, 'X')
+    .slice(0, 8);
+  setupCode = `${raw.slice(0, 4)}-${raw.slice(4)}`;
+  log('──────────────────────────────────────────────');
+  log(`  First setup: open the web app and enter this code: ${setupCode}`);
+  log('  (a new code is made each time the container starts, until setup is done)');
+  log('──────────────────────────────────────────────');
+}
 
 // Bring Plex's Leaving Soon collections in step, one run at a time; a change during a run gets another run.
 let collections = Promise.resolve();
@@ -90,8 +104,14 @@ const app = createApp({
   now,
   log,
   publicDir: path.join(__dirname, 'public'),
-  publicUrl: process.env.PUBLIC_URL || undefined,
   leavingChanged: () => void updateCollections(),
+  apps,
+  setupCode: () => setupCode,
+  setupDone: () => {
+    setupCode = null;
+  },
+  // A new or changed app: sync now rather than in up to 15 minutes.
+  appsChanged: () => void runSync(),
 });
 const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));
@@ -102,9 +122,10 @@ const runSync = async () => {
   if (running) return;
   running = true;
   try {
-    await sync({ store, plex, tautulli, settings: DEFAULTS, now, log });
+    if (!apps.isSetUp()) return; // nothing to sync until Plex is linked
+    await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings: DEFAULTS, now, log });
     // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up.
-    await runDeletions({ store, arrs, settings: DEFAULTS, now, log });
+    await runDeletions({ store, arrs: arrsFrom(apps), settings: DEFAULTS, now, log });
     await updateCollections();
   } finally {
     running = false;

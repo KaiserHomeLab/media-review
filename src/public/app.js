@@ -164,6 +164,9 @@ async function start() {
   try {
     me = await api('/api/me');
   } catch {
+    // A fresh install: nobody can sign in until the Owner has done first setup.
+    const setup = await api('/api/setup').catch(() => null);
+    if (setup && !setup.setUp) return location.replace('/setup.html');
     $('signin').hidden = false;
     if (err) {
       $('signin-error').textContent = SIGNIN_ERRORS[err] ?? 'Sign-in failed.';
@@ -174,6 +177,7 @@ async function start() {
   $('who').textContent = me.isOwner ? `${me.username} · Owner` : me.username;
   $('logout').hidden = false;
   $('owner-link').hidden = !me.isOwner;
+  $('settings-link').hidden = !me.isOwner;
   $('owner-note').hidden = !me.isOwner;
   if (me.isOwner)
     api('/api/owner/review-queue')

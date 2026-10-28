@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// The Owner's page: the Review Queue and Leaving Soon with their decisions, and the optional API key for Media Ops.
+// The Owner's page: the Review Queue and Leaving Soon, with their decisions. Settings has its own page.
 // The same decisions can be made in Media Ops; both go to the same place (ADR 0003).
 'use strict';
 
@@ -161,30 +161,10 @@ async function loadQueue() {
   if (!reviewQueue.length) $('queue').append(el('li', 'empty', 'Nothing waiting for review.'));
 }
 
-// ------------------------------------------------------------------ the API key for Media Ops
-const showKey = key => {
-  $('key').textContent = key ?? 'No key yet. Generate one to connect Media Ops.';
-  $('generate').textContent = key ? 'Generate a new key' : 'Generate a key';
-};
-
-$('generate').addEventListener('click', async () => {
-  if (
-    !$('key').textContent.startsWith('No key') &&
-    !confirm('Replace the current key? Media Ops will need the new one.')
-  )
-    return;
-  try {
-    showKey((await api('/api/owner/api-key', { method: 'POST', body: '{}' })).apiKey);
-  } catch (e) {
-    fail(e.message);
-  }
-});
-
-Promise.all([loadAll(), api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey))])
+loadAll()
   .then(() => {
     $('queue-card').hidden = false;
     $('leaving-card').hidden = false;
-    $('key-card').hidden = false;
   })
   .catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));
 // Keep it current while it's open, e.g. after a decision made in Media Ops.

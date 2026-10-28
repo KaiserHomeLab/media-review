@@ -11,17 +11,23 @@ It works on its own. If you also run [Media Ops](https://github.com/KaiserHomeLa
 
 ## Installing on Unraid
 
-Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, next to Plex and Tautulli.
+Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, next to Plex and Tautulli. Everything else is set up in its web app.
 
 1. Save [`unraid-template.xml`](unraid-template.xml) as `/boot/config/plugins/dockerMan/templates-user/my-media-review.xml`, then go to **Docker → Add Container → Template: media-review**.
-2. Set **Network Type** to the custom network Plex and Tautulli are on. Media Review then reaches them by container name: the defaults are `http://plex:32400` and `http://tautulli:8181`. If Plex runs on host networking, use the server's LAN IP for Plex instead.
-3. Fill in the Plex token, the Tautulli API key, and the **Public address** (below).
-4. Keep **Appdata** on the cache pool. SQLite is unreliable through `/mnt/user`'s FUSE layer unless appdata is an exclusive share, so use `/mnt/cache/appdata/media-review` if it isn't.
-5. Apply, then open the web UI and sign in with Plex as the server owner. The **Review Queue** is in the top bar. To use Media Ops too (optional), generate a key under **Media Ops** on that page, and add Media Review in Media Ops under Settings → Add app with `http://media-review:8485` and that key.
+2. Set **Network Type** to the custom network Plex, Tautulli, Radarr and Sonarr are on, so Media Review can reach them by container name (`http://plex:32400`, `http://tautulli:8181`…).
+3. Keep **Appdata** on the cache pool. SQLite is unreliable through `/mnt/user`'s FUSE layer unless appdata is an exclusive share, so use `/mnt/cache/appdata/media-review` if it isn't.
+4. Apply, and open the container's log (**Docker → media-review → Logs**). It shows a one-time **setup code**; a new one is made at each start until setup is done.
+5. Open the web UI and do **first setup**:
+   1. Enter the setup code.
+   2. Sign in with the Plex account that owns your server. You become Media Review's Owner.
+   3. Pick the server, and the address Media Review uses to reach it, e.g. `http://plex:32400`.
+6. On **Settings** (⚙ in the top bar), add **Tautulli**, which is needed for play history. Add **Radarr**, **Sonarr** and **Sonarr (anime)** if you want what you Remove to be deleted. Each has **Test** and **Save**. Saved API keys are never shown again, and leaving the key blank keeps the saved one.
 
-**Reaching it from outside, with a Cloudflare Tunnel:** add a public hostname, for example `review.example.com`, with the service `http://media-review:8485`. The cloudflared container must be on the same custom network. Set **Public address** to `https://review.example.com`, so Plex sign-in comes back there and session cookies are Secure.
+**Reaching it from outside, with a Cloudflare Tunnel:** add a public hostname, for example `review.example.com`, with the service `http://media-review:8485`. The cloudflared container must be on the same custom network. Then put `https://review.example.com` in **Settings → Public address**, so Plex sign-in comes back there and sign-in cookies stay on https. Do first setup before you open the tunnel, or keep the setup code private; it's what stops anyone else from claiming the install.
 
-Logs are capped at 3 × 10 MB, the health check uses `/healthz`, and the container runs as PUID/PGID (99:100 by default, like other Unraid apps).
+**Media Ops (optional):** on Settings, generate a key under **Media Ops**. Then add Media Review in Media Ops under Settings → Add app, with `http://media-review:8485` and that key.
+
+Logs are capped at 3 × 10 MB, the health check uses `/healthz`, and the container runs as PUID/PGID (99:100 by default, like other Unraid apps). Deletions run overnight, 04:00–07:00, in the container's time zone (`TZ`, which Unraid sets).
 
 ## Running it without Docker
 
@@ -29,31 +35,17 @@ Node.js 24 or newer, no npm dependencies.
 
 ```sh
 cd src
-PLEX_URL=http://plex:32400 PLEX_TOKEN=… \
-TAUTULLI_URL=http://tautulli:8181 TAUTULLI_API_KEY=… \
 npm start
 ```
 
-| Variable | Required | Meaning |
+Then open `http://localhost:8485` and follow first setup, with the code printed in the terminal.
+
+| Variable | Default | Meaning |
 |---|---|---|
-| `PLEX_URL` | yes | The Owner's Plex server, as Media Review can reach it |
-| `PLEX_TOKEN` | yes | The Owner's Plex token, for reading the libraries and posters |
-| `TAUTULLI_URL` | yes | Tautulli, for play history |
-| `TAUTULLI_API_KEY` | yes | Tautulli → Settings → Web Interface → API |
-| `RADARR_URL`, `RADARR_API_KEY` | no | Radarr, for deleting movies once their Leaving Soon is over |
-| `SONARR_URL`, `SONARR_API_KEY` | no | Sonarr, for deleting shows |
-| `SONARR_ANIME_URL`, `SONARR_ANIME_API_KEY` | no | A second Sonarr, for anime. A show is deleted from whichever Sonarr has it |
-| `TZ` | no | The server's time zone, which decides when "overnight" is: deletions run 04:00–07:00 |
-| `PUBLIC_URL` | no | The address friends open, e.g. `https://review.example.com`. Sign-in returns there, and cookies are Secure when it's https |
-| `PORT` | no | Default `8485` (Media Ops uses 8484) |
-| `DATA_DIR` | no | Where the SQLite file lives. Default `src/data` |
-| `SYNC_MINUTES` | no | How often to pull from Plex and Tautulli. Default `15` |
-
-Voters sign in with Plex at the app's address. The Owner signs in the same way and finds the **Review Queue** in the top bar.
-
-To connect Media Ops as well (optional): on the Review Queue page, generate a key under **Media Ops**, then add Media Review in Media Ops under Settings → Add app with this address and that key.
-
-Behind a reverse proxy without `PUBLIC_URL`, pass `X-Forwarded-Proto` and `X-Forwarded-Host`, so Plex sign-in comes back to the right address and cookies are marked Secure.
+| `PORT` | `8485` | Web app and API port (Media Ops uses 8484) |
+| `DATA_DIR` | `src/data` | Where the database lives: every Downvote, decision and setting, the apps included |
+| `SYNC_MINUTES` | `15` | How often to read Plex and Tautulli |
+| `TZ` | the system's | The time zone that decides when "overnight" is, for deletions |
 
 ## API for Media Ops (optional)
 
@@ -67,6 +59,8 @@ Every request sends the key as `X-Api-Key`.
 - `GET /api/v1/poster/:ratingKey`: the Title's poster
 
 The Owner's own pages use the same routes under `/api/owner/` with their session instead of the key.
+
+Voters sign in with Plex at the app's address. The Owner signs in the same way and finds the **Review Queue** and **Settings** in the top bar.
 
 ## Development
 

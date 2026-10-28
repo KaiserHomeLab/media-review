@@ -81,6 +81,34 @@ function plex(cfg) {
       };
     },
 
+    // First setup: the servers this account owns, with every address Plex knows for each.
+    /**
+     * @param {string} token
+     * @returns {Promise<Array<{ machineId: string, name: string, addresses: Array<{ url: string, local: boolean }> }>>}
+     */
+    async ownedServers(token) {
+      const resources = /** @type {any[]} */ (
+        await fetchJson(f, 'plex.tv', `${tv}/api/v2/resources?includeHttps=1&includeRelay=0`, {
+          headers: tvHeaders(token),
+        })
+      );
+      return resources
+        .filter(
+          r =>
+            r.owned &&
+            String(r.provides ?? '')
+              .split(',')
+              .includes('server'),
+        )
+        .map(r => ({
+          machineId: String(r.clientIdentifier),
+          name: String(r.name),
+          addresses: /** @type {any[]} */ (r.connections ?? [])
+            .filter(c => !c.relay && c.uri)
+            .map(c => ({ url: String(c.uri), local: !!c.local })),
+        }));
+    },
+
     // ---------------------------------------------------------------- the Owner's server
     /** @returns {Promise<string>} */
     machineId: async () => (await server('/identity')).MediaContainer.machineIdentifier,
