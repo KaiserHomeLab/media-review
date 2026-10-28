@@ -6,7 +6,7 @@
 
 - An Owner-only settings page for every value in the spec's Settings table, starting from the defaults.
 - Changing a setting re-runs the threshold check for every Title that isn't queued. It never takes a Title out of the queue.
-- Answer **Q2**: how to tell anime from TV for the Sample length (a separate Sonarr instance, the series type, or the Plex library). Check the Owner's setup and write the answer into the spec.
+- Anime and TV get separate Sample lengths. Anime has its own Plex library (Q2, answered), so the Owner picks which Plex libraries are anime, and Titles in them use the anime Sample length.
 
 ## Acceptance criteria
 

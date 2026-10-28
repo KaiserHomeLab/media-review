@@ -120,6 +120,16 @@ function openStore(file) {
     latestPlay: () => Number(/** @type {any} */ (db.prepare('SELECT MAX(started) AS m FROM plays').get()).m ?? 0),
     /** @param {string} titleKey @returns {PlayRow[]} */
     playsOf: titleKey => /** @type {any} */ (db.prepare('SELECT * FROM plays WHERE title_key = ?').all(titleKey)),
+    /** @param {string} voterId @returns {Map<string, Array<{ seconds: number, watched: boolean }>>} by Title */
+    playsBy: voterId => {
+      const out = new Map();
+      for (const p of /** @type {any[]} */ (db.prepare('SELECT * FROM plays WHERE voter_id = ?').all(voterId))) {
+        const list = out.get(p.title_key) ?? [];
+        list.push({ seconds: p.seconds, watched: !!p.watched });
+        out.set(p.title_key, list);
+      }
+      return out;
+    },
     /** @param {number} since unix seconds @returns {Map<string, number>} watch seconds per Voter since then */
     watchSecondsSince: since => {
       const rows = /** @type {any[]} */ (
