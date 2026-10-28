@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
-const { castDownvote, sampledBy, reviewQueue } = require('./review');
+const { castDownvote, withdrawDownvote, keep, sampledBy, reviewQueue } = require('./review');
 
 const SESSION_DAYS = 30;
 const VERSION = require('../package.json').version;
@@ -127,6 +127,14 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
       if (!apiKeyOk(req)) return json(res, 401, { error: 'invalid API key' });
       if (m === 'GET' && p === '/api/v1/status') return json(res, 200, { app: 'media-review', version: VERSION });
       if (m === 'GET' && p === '/api/v1/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
+      const decide = p.match(/^\/api\/v1\/review-queue\/([^/]+)\/keep$/);
+      if (m === 'POST' && decide) {
+        const key = decodeURIComponent(decide[1]);
+        const r = keep(store, key, now());
+        if (!r.ok) return json(res, 409, { error: r.error });
+        log(`Keep: ${store.title(key)?.title ?? key}`);
+        return json(res, 200, { kept: true });
+      }
       const poster = p.match(/^\/api\/v1\/poster\/([^/]+)$/);
       if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
       return json(res, 404, { error: 'not found' });
@@ -181,6 +189,12 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
         inReview: store.isQueued(t.rating_key),
       }));
       return json(res, 200, { titles });
+    }
+
+    const wd = p.match(/^\/api\/titles\/([^/]+)\/withdraw$/);
+    if (m === 'POST' && wd) {
+      const r = withdrawDownvote(store, settings, s.plexId, decodeURIComponent(wd[1]), now());
+      return r.ok ? json(res, 200, { downvoted: false }) : json(res, 409, { error: r.error });
     }
 
     const dv = p.match(/^\/api\/titles\/([^/]+)\/downvote$/);
