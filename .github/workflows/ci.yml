@@ -1,0 +1,199 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 KaiserHomeLab
+#
+# CI for every pull request and every push to main:
+#   lint    ESLint and Prettier (formatting)
+#   types   TypeScript's checker on the JavaScript (JSDoc types), nothing is compiled
+#   test    the unit and server tests, on the Node versions we support
+#   build   builds the image and smoke-tests it (starts it, checks it serves the web app);
+#           on main and on version tags it then publishes the multi-arch image to
+#           ghcr.io/<owner>/media-review with a signed provenance attestation. Only runs when
+#           lint and test passed.
+#   release on a version tag (v1.2.3): creates the GitHub release, with the notes from
+#           CHANGELOG.md. See README → Releasing.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or PR makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege by default; only the build job can publish packages. Actions are pinned to
+# exact commits, so a moved tag can't change what runs with the publishing token.
+permissions:
+  contents: read
+
+# The app lives in src/; run commands there unless a step says otherwise.
+defaults:
+  run:
+    working-directory: src
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+
+  types:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24] # node:sqlite; engines in src/package.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      # The app has no runtime dependencies, so the tests need no install step.
+      - run: npm test
+
+  build:
+    name: build
+    defaults:
+      run:
+        working-directory: .
+    needs: [lint, types, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # sign the provenance attestation (Sigstore, via GitHub's OIDC token)
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Version tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          want="v$(jq -r .version src/package.json)"
+          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json ($want)"; exit 1; }
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/media-review
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+      - id: info
+        run: |
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r .version src/package.json)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      # Smoke test: build the image for this machine, start it, and check it answers, serves the
+      # web app, and guards the API, before anything is published. Plex and Tautulli point nowhere:
+      # the sync fails, which is logged, and everything else still works.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: src/Dockerfile
+          load: true
+          tags: media-review:smoke
+          cache-from: type=gha
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8485:8485 \
+            -e PLEX_URL=http://127.0.0.1:1 -e PLEX_TOKEN=x -e TAUTULLI_URL=http://127.0.0.1:1 -e TAUTULLI_API_KEY=x \
+            media-review:smoke
+          for i in $(seq 1 30); do curl -fsS http://localhost:8485/healthz && break; sleep 2; done
+          curl -fsS http://localhost:8485/healthz
+          curl -fsS http://localhost:8485/ | grep -q '<title>Media Review</title>'
+          curl -fsS -o /dev/null -w '%{content_type}' http://localhost:8485/app.js | grep -q javascript
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8485/api/v1/review-queue)" = 401 ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8485/api/titles)" = 401 ]
+          docker exec smoke test -f /config/media-review.db
+      - name: Container log
+        if: always()
+        run: docker logs smoke || true
+      - id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: src/Dockerfile
+          build-args: |
+            BUILD_DATE=${{ steps.info.outputs.date }}
+            VERSION=${{ steps.info.outputs.version }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Published with a signed record of how and from what it was built (SLSA provenance)
+          # and a list of every package inside (SBOM): `docker buildx imagetools inspect`.
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Verifiable by anyone: gh attestation verify oci://ghcr.io/kaiserhomelab/media-review:<tag> -R KaiserHomeLab/media-review
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/media-review
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    name: release
+    defaults:
+      run:
+        working-directory: .
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The section from "## [1.2.3]" up to the next "## [" heading.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::No section for $version in CHANGELOG.md"; exit 1; }
+          printf '\n**Image:** `ghcr.io/kaiserhomelab/media-review:%s`\n' "$version" >> notes.md
+          cat notes.md
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "Media Review ${GITHUB_REF_NAME#v}" --notes-file notes.md

@@ -6,7 +6,8 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 
 ## Environment
 
-- Runs as one Docker container on the Owner's Unraid server, next to Plex, Sonarr, Radarr, Tautulli and Seerr.
+- Runs as one Docker container on the Owner's Unraid server, next to Plex, Sonarr, Radarr, Tautulli and Seerr: `ghcr.io/kaiserhomelab/media-review`, published by CI and installed with an Unraid template. It sits on the Owner's custom Docker network and reaches the other apps by container name.
+- Friends reach the web app from the internet through the Owner's Cloudflare Tunnel.
 - Anime has its own Plex library and its own Sonarr instance, separate from TV.
 - Holds its own keys for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord (ADR 0002, Consequences).
 - Keeps working while Media Ops is down. Only the Owner's queue screen is unavailable then.

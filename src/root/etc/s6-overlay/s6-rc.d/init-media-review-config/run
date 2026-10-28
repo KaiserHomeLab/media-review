@@ -1,0 +1,14 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 KaiserHomeLab
+#
+# s6 oneshot, runs at container start after the linuxserver.io base init (user/PUID/PGID).
+# Makes /config, where the database lives, and hands it to the abc user.
+
+mkdir -p /config
+
+# permissions
+if [[ -z ${LSIO_NON_ROOT_USER} ]]; then
+    lsiown -R abc:abc /config
+fi

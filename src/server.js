@@ -54,6 +54,7 @@ const app = createApp({
   now,
   log,
   publicDir: path.join(__dirname, 'public'),
+  publicUrl: process.env.PUBLIC_URL || undefined,
 });
 const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));
