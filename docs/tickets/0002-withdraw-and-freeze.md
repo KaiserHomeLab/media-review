@@ -2,7 +2,7 @@
 
 **Blocked by:** 0001
 
-**Status:** Done. Media Ops shows the Watches in the same PR as 0003's Keep button.
+**Status:** Done. Media Ops shows the Watches in KaiserHomeLab/media-ops#45.
 
 ## What to build
 
