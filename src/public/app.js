@@ -158,6 +158,13 @@ async function start() {
   $('logout').hidden = false;
   $('owner-link').hidden = !me.isOwner;
   $('owner-note').hidden = !me.isOwner;
+  if (me.isOwner)
+    api('/api/owner/review-queue')
+      .then(({ reviewQueue }) => {
+        $('queue-badge').textContent = String(reviewQueue.length);
+        $('queue-badge').hidden = !reviewQueue.length;
+      })
+      .catch(() => {});
   $('app').hidden = false;
   let timer;
   $('search').addEventListener('input', e => {

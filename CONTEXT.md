@@ -5,11 +5,11 @@ A way for people who use the Plex server to signal that a title is no longer wan
 ## Systems
 
 **Media Review**:
-The app that holds every Downvote, Objection and Problem Report, applies the rules, keeps the Review Queue and carries out each Keep and Remove.
+The app that holds every Downvote, Objection and Problem Report, applies the rules, keeps the Review Queue and carries out each Keep and Remove. The Owner can decide in it directly, with or without Media Ops.
 _Avoid_: Voting app, vote server, downvote bot
 
 **Media Ops**:
-The Owner's own dashboard, where the Owner sees the Review Queue and makes decisions. It holds none of the rules.
+The Owner's own dashboard: an optional second place to see the Review Queue and make decisions. It holds none of the rules.
 _Avoid_: Dashboard, ops app
 
 ## Language

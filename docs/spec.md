@@ -1,6 +1,6 @@
 # Media Review: spec
 
-Media Review lets the people the Owner's Plex server is shared with signal that a Title is no longer wanted. A weighted threshold sends a Title to the Review Queue, and the Owner decides Keep or Remove from Media Ops. Media Review holds every rule and carries out every decision (ADR 0002).
+Media Review lets the people the Owner's Plex server is shared with signal that a Title is no longer wanted. A weighted threshold sends a Title to the Review Queue, and the Owner decides Keep or Remove, in Media Review itself or, if they use it, in Media Ops. Media Review holds every rule and carries out every decision (ADR 0002). It works fully without Media Ops (ADR 0003).
 
 Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spec and CONTEXT.md disagree, CONTEXT.md wins and this spec is fixed.
 
@@ -9,7 +9,7 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - Runs as one Docker container on the Owner's Unraid server, next to Plex, Sonarr, Radarr, Tautulli and Seerr.
 - Anime has its own Plex library and its own Sonarr instance, separate from TV.
 - Holds its own keys for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord (ADR 0002, Consequences).
-- Keeps working while Media Ops is down. Only the Owner's queue screen is unavailable then.
+- Works with or without Media Ops. If Media Ops is down or not installed, the Owner decides in Media Review's own web app.
 
 ## Interfaces
 
@@ -19,7 +19,8 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - The Owner is the Plex server's owner account.
 - Voters can browse Titles, cast and withdraw a Downvote, see Leaving Soon, make an Objection, file a Problem Report, and link a Discord account.
 - Voters see only their own Downvotes and Objections. Only the Owner can see who cast each one.
-- The Owner has a settings page for every value in [Settings](#settings).
+- The Owner has a **Review Queue** page with every entry and its details (the same as the Media Ops card) and the decisions: Keep now, Remove (0004) and Problem Reports (0007) later.
+- The Owner has a settings page for every value in [Settings](#settings), and the API key for Media Ops, which is only needed if Media Ops is used.
 
 ### Discord bot
 
@@ -106,7 +107,7 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 ### Problem Reports
 
 - A Voter reports that a specific copy of a Title is broken or poor quality and asks for it to be replaced. A Problem Report never counts as a Downvote (ADR 0001).
-- It waits for the Owner, who resolves or closes it from Media Ops.
+- It waits for the Owner, who resolves or closes it in Media Review, or in Media Ops if connected.
 - The reporter is told when it is resolved or closed: in the web app, and on Discord if linked. A resolved one is also announced.
 
 ## Settings

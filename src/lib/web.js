@@ -121,13 +121,7 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
       if (m === 'GET' && p === '/api/v1/status') return json(res, 200, { app: 'media-review', version: VERSION });
       if (m === 'GET' && p === '/api/v1/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
       const decide = p.match(/^\/api\/v1\/review-queue\/([^/]+)\/keep$/);
-      if (m === 'POST' && decide) {
-        const key = decodeURIComponent(decide[1]);
-        const r = keep(store, key, now());
-        if (!r.ok) return json(res, 409, { error: r.error });
-        log(`Keep: ${store.title(key)?.title ?? key}`);
-        return json(res, 200, { kept: true });
-      }
+      if (m === 'POST' && decide) return decideKeep(res, decodeURIComponent(decide[1]), 'Media Ops');
       const poster = p.match(/^\/api\/v1\/poster\/([^/]+)$/);
       if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
       return json(res, 404, { error: 'not found' });
@@ -210,6 +204,12 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
     const poster = p.match(/^\/poster\/([^/]+)$/);
     if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
 
+    // Owner only: the Review Queue and its decisions, the same ones Media Ops can make (ADR 0003).
+    if (p.startsWith('/api/owner/') && !s.isOwner) return json(res, 403, { error: 'Owner only' });
+    if (m === 'GET' && p === '/api/owner/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
+    const ownerKeep = p.match(/^\/api\/owner\/review-queue\/([^/]+)\/keep$/);
+    if (m === 'POST' && ownerKeep) return decideKeep(res, decodeURIComponent(ownerKeep[1]), 'Media Review');
+
     // Owner only: the API key Media Ops uses.
     if (p === '/api/owner/api-key') {
       if (!s.isOwner) return json(res, 403, { error: 'Owner only' });
@@ -222,6 +222,15 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
       }
     }
     return json(res, 404, { error: 'not found' });
+  }
+
+  // The Owner's Keep, from Media Ops or from Media Review's own Review Queue page.
+  /** @param {Res} res @param {string} key @param {string} via */
+  function decideKeep(res, key, via) {
+    const r = keep(store, key, now());
+    if (!r.ok) return json(res, 409, { error: r.error });
+    log(`Keep (${via}): ${store.title(key)?.title ?? key}`);
+    return json(res, 200, { kept: true });
   }
 
   // A Title's poster, resized by Plex, so neither the browser nor Media Ops needs a Plex token.

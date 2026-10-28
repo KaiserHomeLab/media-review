@@ -409,7 +409,66 @@ h2 .count {
   line-height: 1.35;
 }
 
-/* ------------------------------------------------------------------ owner page */
+/* ------------------------------------------------------------------ owner: Review Queue */
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.queue .entry {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.queue .entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.queue .poster {
+  width: 56px;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  background: var(--bg);
+  object-fit: cover;
+  display: block;
+}
+.queue .main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.queue .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.queue .line {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.queue .acts {
+  display: flex;
+  gap: 6px;
+}
+@media (max-width: 640px) {
+  .queue .entry {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .queue .poster {
+    width: 44px;
+  }
+  .queue .acts {
+    grid-column: 2;
+  }
+}
+.btn .chip {
+  padding: 0 6px;
+}
+
+/* ------------------------------------------------------------------ owner: API key */
 .panel {
   max-width: 640px;
 }

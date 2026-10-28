@@ -1,6 +1,8 @@
 # Media Review
 
-Friends who use a Plex server Downvote movies and shows they think should leave the library. When enough of the people who've actually tried a Title agree, it goes to the Review Queue, and the Owner decides Keep or Remove from [Media Ops](https://github.com/KaiserHomeLab/media-ops). Nothing is ever removed automatically.
+Friends who use a Plex server Downvote movies and shows they think should leave the library. When enough of the people who've actually tried a Title agree, it goes to the Review Queue, and the Owner decides Keep or Remove on Media Review's own Review Queue page. Nothing is ever removed automatically.
+
+It works on its own. If you also run [Media Ops](https://github.com/KaiserHomeLab/media-ops), you can connect the two and decide from either.
 
 - What the words mean: [CONTEXT.md](CONTEXT.md)
 - What it does: [docs/spec.md](docs/spec.md)
@@ -28,11 +30,13 @@ npm start
 | `DATA_DIR` | no | Where the SQLite file lives. Default `src/data` |
 | `SYNC_MINUTES` | no | How often to pull from Plex and Tautulli. Default `15` |
 
-Voters sign in with Plex at the app's address. The Owner signs in the same way, opens **API key**, generates a key, and adds Media Review in Media Ops under Settings → Add app with this address and that key.
+Voters sign in with Plex at the app's address. The Owner signs in the same way and finds the **Review Queue** in the top bar.
+
+To connect Media Ops as well (optional): on the Review Queue page, generate a key under **Media Ops**, then add Media Review in Media Ops under Settings → Add app with this address and that key.
 
 Behind a reverse proxy, pass `X-Forwarded-Proto` and `X-Forwarded-Host` so the Plex sign-in comes back to the right address and cookies are marked Secure.
 
-## API for Media Ops
+## API for Media Ops (optional)
 
 Every request sends the key as `X-Api-Key`.
 
