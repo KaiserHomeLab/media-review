@@ -55,7 +55,7 @@ const app = createApp({
   log,
   publicDir: path.join(__dirname, 'public'),
 });
-const port = Number(process.env.PORT ?? 8484);
+const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));
 
 const every = Math.max(1, Number(process.env.SYNC_MINUTES ?? 15)) * 60000;

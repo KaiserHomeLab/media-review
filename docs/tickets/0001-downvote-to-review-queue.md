@@ -2,7 +2,7 @@
 
 **Blocked by:** none. This is the tracer bullet.
 
-**Status:** Media Review side built (`src/`). Media Ops side in a PR on KaiserHomeLab/media-ops. Q4 and Q5 are built as proposed and still need the Owner's confirmation. Q3 is answered from Tautulli's docs and needs checking against the real server.
+**Status:** Media Review side built (`src/`). Media Ops side in KaiserHomeLab/media-ops#44. Q4 and Q5 are built as proposed and still need the Owner's confirmation. Q3 is answered from Tautulli's docs and needs checking against the real server.
 
 ## What to build
 

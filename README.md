@@ -24,7 +24,7 @@ npm start
 | `PLEX_TOKEN` | yes | The Owner's Plex token, for reading the libraries and posters |
 | `TAUTULLI_URL` | yes | Tautulli, for play history |
 | `TAUTULLI_API_KEY` | yes | Tautulli → Settings → Web Interface → API |
-| `PORT` | no | Default `8484` |
+| `PORT` | no | Default `8485` (Media Ops uses 8484) |
 | `DATA_DIR` | no | Where the SQLite file lives. Default `src/data` |
 | `SYNC_MINUTES` | no | How often to pull from Plex and Tautulli. Default `15` |
 
