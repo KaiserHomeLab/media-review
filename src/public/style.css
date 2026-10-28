@@ -480,6 +480,81 @@ h2 .count {
   padding: 0 6px;
 }
 
+/* ------------------------------------------------------------------ forms (setup, Settings) */
+main.narrow {
+  max-width: 760px;
+}
+.form {
+  display: grid;
+  gap: 14px;
+}
+.form h2 {
+  margin-bottom: 0;
+}
+.form p {
+  margin: 0;
+}
+.field {
+  display: grid;
+  gap: 6px;
+}
+.field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.field small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.field input,
+.field select {
+  font: 14px var(--sans);
+  color: var(--text-primary);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  width: 100%;
+}
+.field input:focus,
+.field select:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+code {
+  font: 12px var(--mono);
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+/* The outcome of Test or Save: always worded, never colour alone. */
+.result {
+  font-size: 13px;
+}
+.result.good {
+  color: var(--good);
+}
+.result.bad {
+  color: var(--critical);
+}
+.linkish {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* ------------------------------------------------------------------ owner: API key */
 .panel {
   max-width: 640px;

@@ -9,6 +9,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const { castDownvote, withdrawDownvote, keep, remove, leavingSoon, sampledBy, reviewQueue } = require('./review');
+const { APPS, cleanUrl, probe: probeApp } = require('./apps');
+const { fetchJson, join } = require('./http');
 
 const SESSION_DAYS = 30;
 const VERSION = require('../package.json').version;
@@ -22,6 +24,22 @@ const TYPES = /** @type {Record<string, string>} */ ({
   '.txt': 'text/plain; charset=utf-8',
 });
 
+// A small JSON request body (settings and setup forms). Anything else reads as {}.
+/** @param {import('node:http').IncomingMessage} req @returns {Promise<Record<string, unknown>>} */
+async function readJson(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (body.length > 64 * 1024) throw Object.assign(new Error('request too large'), { status: 413 });
+  }
+  try {
+    const v = JSON.parse(body || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * @typedef {import('node:http').IncomingMessage} Req
  * @typedef {import('node:http').ServerResponse} Res
@@ -32,10 +50,29 @@ const TYPES = /** @type {Record<string, string>} */ ({
  * @param {{ store: import('./store').Store, plex: ReturnType<typeof import('./plex').plex>,
  *   machineId: () => Promise<string>, settings: import('./rules').Settings, now: () => number,
  *   log: (msg: string) => void, publicDir: string, publicUrl?: string,
- *   leavingChanged?: () => void }} ctx
+ *   leavingChanged?: () => void, apps: import('./apps').AppSettings, setupCode?: () => string | null,
+ *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch }} ctx
+ *   setupCode: the one-time code printed in the log until first setup is done
  */
-function createApp({ store, plex, machineId, settings, now, log, publicDir, publicUrl, leavingChanged = () => {} }) {
-  const fixedBase = publicUrl ? publicUrl.replace(/\/+$/, '') : null;
+function createApp({
+  store,
+  plex,
+  machineId,
+  settings,
+  now,
+  log,
+  publicDir,
+  publicUrl,
+  leavingChanged = () => {},
+  apps,
+  setupCode = () => null,
+  setupDone = () => {},
+  appsChanged = () => {},
+  probe = probeApp,
+  fetch: f = fetch,
+}) {
+  // The public address: from the container (tests) or the Settings page, read fresh each time.
+  const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
   /** @param {Res} res @param {number} status @param {unknown} body */
   const json = (res, status, body) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -57,7 +94,10 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
         .map(([k, v]) => [k, decodeURIComponent(v)]),
     );
   /** @param {Req} req */
-  const secure = req => (fixedBase ? fixedBase.startsWith('https:') : req.headers['x-forwarded-proto'] === 'https');
+  const secure = req => {
+    const fixed = base();
+    return fixed ? fixed.startsWith('https:') : req.headers['x-forwarded-proto'] === 'https';
+  };
   /** @param {Req} req @param {string} name @param {string} value @param {number} maxAge seconds */
   const cookie = (req, name, value, maxAge) =>
     `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure(req) ? '; Secure' : ''}`;
@@ -81,11 +121,13 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
   // Where Plex sends the Voter back after sign-in: PUBLIC_URL when set (e.g. behind a Cloudflare Tunnel), else
   // what the reverse proxy or browser says.
   const baseUrl = req =>
-    fixedBase ?? `${secure(req) ? 'https' : 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
+    base() ?? `${secure(req) ? 'https' : 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
 
   // ------------------------------------------------------------------ sign in with Plex
   /** @param {Req} req @param {Res} res */
   async function signInStart(req, res) {
+    // Before first setup, signing in is only for the Owner linking Plex, with the setup code.
+    if (!apps.isSetUp() && !setupOf(req)) return redirect(res, '/setup.html');
     const pin = await plex.createPin();
     redirect(res, plex.authUrl(pin.code, `${baseUrl(req)}/auth/plex/callback`), [
       cookie(req, 'mr_pin', String(pin.id), 900),
@@ -97,7 +139,8 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     const clearPin = cookie(req, 'mr_pin', '', 0);
     const pinId = Number(cookiesOf(req).mr_pin);
     const token = pinId ? await plex.pinToken(pinId) : null;
-    if (!token) return redirect(res, '/?signin=failed', [clearPin]);
+    if (!token) return redirect(res, apps.isSetUp() ? '/?signin=failed' : '/setup.html?signin=failed', [clearPin]);
+    if (!apps.isSetUp()) return setupSignedIn(req, res, token, clearPin);
     const account = await plex.account(token, await machineId());
     if (account.access === 'none') {
       log(`sign-in refused: ${account.username} has no access to this server`);
@@ -111,6 +154,165 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     redirect(res, '/', [clearPin, cookie(req, 'mr_session', session, SESSION_DAYS * 86400)]);
   }
 
+  // ------------------------------------------------------------------ first setup
+  // A fresh install has no Owner. The setup page asks for the one-time code from the log, then the Owner
+  // signs in with Plex and picks their server; that links Plex and makes them the Owner.
+  /** @type {Map<string, { at: number, token?: string, plexId?: string, servers?: any[] }>} */
+  const setups = new Map();
+  let wrongCodes = 0;
+  /** @param {Req} req */
+  const setupOf = req => {
+    const s = setups.get(cookiesOf(req).mr_setup ?? '');
+    return s && now() - s.at < 3600 && !apps.isSetUp() ? s : undefined;
+  };
+
+  /** @param {Req} req @param {Res} res @param {string} token @param {string} clearPin */
+  async function setupSignedIn(req, res, token, clearPin) {
+    const s = setupOf(req);
+    if (!s) return redirect(res, '/setup.html', [clearPin]);
+    const [account, servers] = await Promise.all([plex.account(token, ''), plex.ownedServers(token)]);
+    if (!servers.length) return redirect(res, '/setup.html?signin=no-server', [clearPin]);
+    Object.assign(s, { token, plexId: account.plexId, servers });
+    redirect(res, '/setup.html', [clearPin]);
+  }
+
+  /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} p */
+  async function setupRoute(req, res, m, p) {
+    if (m === 'GET' && p === '/api/setup') {
+      const s = setupOf(req);
+      return json(res, 200, {
+        setUp: apps.isSetUp(),
+        step: apps.isSetUp() ? 'done' : !s ? 'code' : !s.token ? 'signin' : 'server',
+      });
+    }
+    if (apps.isSetUp()) return json(res, 409, { error: 'already set up' });
+    if (m === 'POST' && p === '/api/setup/code') {
+      const code = setupCode();
+      // Ten wrong codes and setup is closed until the container restarts with a new code.
+      if (!code || wrongCodes >= 10)
+        return json(res, 429, { error: 'too many wrong codes: restart the container for a new one' });
+      const got = String((await readJson(req)).code ?? '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+      const want = code.replace(/[^A-Z0-9]/g, '');
+      if (got.length !== want.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
+        wrongCodes++;
+        log(`setup: wrong setup code entered (${wrongCodes} of 10)`);
+        return json(res, 403, { error: 'wrong code' });
+      }
+      const id = crypto.randomBytes(32).toString('base64url');
+      setups.set(id, { at: now() });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': cookie(req, 'mr_setup', id, 3600) });
+      return res.end('{"ok":true}');
+    }
+    const s = setupOf(req);
+    if (!s?.token) return json(res, 403, { error: 'enter the setup code and sign in with Plex first' });
+    if (m === 'GET' && p === '/api/setup/servers') return json(res, 200, { servers: s.servers });
+    if (m === 'POST' && p === '/api/setup/plex') {
+      const body = await readJson(req);
+      const server = (s.servers ?? []).find(x => x.machineId === String(body.machineId));
+      const url = cleanUrl(body.url);
+      if (!server) return json(res, 400, { error: 'pick one of your servers' });
+      if (!url) return json(res, 400, { error: 'that is not an http(s) address' });
+      const problem = await plexAt(url, s.token, server.machineId);
+      if (problem) return json(res, 502, { error: problem });
+      apps.setPlex({ url, token: /** @type {string} */ (s.token), machineId: server.machineId, name: server.name });
+      setups.clear();
+      setupDone();
+      appsChanged();
+      log(`setup: Plex linked (${server.name} at ${url})`);
+      const session = crypto.randomBytes(32).toString('base64url');
+      store.addSession(session, /** @type {string} */ (s.plexId), true, now());
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': [cookie(req, 'mr_setup', '', 0), cookie(req, 'mr_session', session, SESSION_DAYS * 86400)],
+      });
+      return res.end('{"ok":true}');
+    }
+    return json(res, 404, { error: 'not found' });
+  }
+
+  // Is the Plex server at this address the one we mean? null if so, else what's wrong, in words.
+  /** @param {string} url @param {string} token @param {string} wantId the server's machine id */
+  async function plexAt(url, token, wantId) {
+    try {
+      const id = await fetchJson(f, 'Plex', join(url, '/identity'), {
+        headers: { 'X-Plex-Token': token },
+        timeoutMs: 8000,
+      });
+      const found = id?.MediaContainer?.machineIdentifier;
+      return found === wantId ? null : 'that address is a different Plex server';
+    } catch (e) {
+      return `Media Review couldn't reach Plex there (${e.message})`;
+    }
+  }
+
+  // ------------------------------------------------------------------ the Owner's Settings page
+  // Apps are saved with their API key; the key is never sent back, and leaving it blank keeps it.
+  /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} sub */
+  async function settingsRoute(req, res, m, sub) {
+    const all = apps.read();
+    if (m === 'GET' && sub === '') {
+      return json(res, 200, {
+        plex: all.plex ? { name: all.plex.name, url: all.plex.url } : null,
+        publicUrl: all.publicUrl ?? '',
+        apps: Object.entries(APPS).map(([id, a]) => ({
+          id,
+          ...a,
+          url: all[/** @type {import('./apps').AppId} */ (id)]?.url ?? '',
+          hasKey: !!all[/** @type {import('./apps').AppId} */ (id)]?.apiKey,
+        })),
+      });
+    }
+    if (m === 'PUT' && sub === '/public-url') {
+      const raw = String((await readJson(req)).publicUrl ?? '').trim();
+      const url = raw ? cleanUrl(raw) : '';
+      if (url == null) return json(res, 400, { error: 'that is not an http(s) address' });
+      apps.setPublicUrl(url);
+      log(`settings: public address ${url ? `set to ${url}` : 'cleared'}`);
+      return json(res, 200, { publicUrl: url });
+    }
+    if (m === 'PUT' && sub === '/plex') {
+      const url = cleanUrl((await readJson(req)).url);
+      if (!url || !all.plex) return json(res, 400, { error: 'that is not an http(s) address' });
+      const problem = await plexAt(url, all.plex.token, all.plex.machineId);
+      if (problem) return json(res, 502, { error: problem });
+      apps.setPlexUrl(url);
+      appsChanged();
+      log(`settings: Plex address set to ${url}`);
+      return json(res, 200, { url });
+    }
+    const a = sub.match(/^\/apps\/(\w+)(\/test)?$/);
+    const id = /** @type {import('./apps').AppId} */ (a?.[1]);
+    if (!a || !Object.hasOwn(APPS, id)) return json(res, 404, { error: 'not found' });
+    if (m === 'DELETE' && !a[2]) {
+      apps.removeApp(id);
+      appsChanged();
+      log(`settings: ${APPS[id].label} removed`);
+      return json(res, 200, { removed: true });
+    }
+    if ((m === 'PUT' && !a[2]) || (m === 'POST' && a[2])) {
+      const body = await readJson(req);
+      const url = cleanUrl(body.url);
+      if (!url) return json(res, 400, { error: 'that is not an http(s) address' });
+      const apiKey = String(body.apiKey ?? '').trim() || all[id]?.apiKey || '';
+      if (!apiKey) return json(res, 400, { error: 'enter its API key' });
+      if (a[2]) {
+        try {
+          return json(res, 200, { ok: true, version: await probe(id, { url, apiKey }, f) });
+        } catch (e) {
+          return json(res, 502, { error: e.message });
+        }
+      }
+      apps.setApp(id, { url, apiKey });
+      appsChanged();
+      log(`settings: ${APPS[id].label} saved (${url})`);
+      return json(res, 200, { saved: true });
+    }
+    return json(res, 404, { error: 'not found' });
+  }
+
   // ------------------------------------------------------------------ routes
   /** @param {Req} req @param {Res} res @param {URL} url */
   async function route(req, res, url) {
@@ -121,6 +323,11 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     if (m === 'GET' && p === '/healthz') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       return res.end('ok');
+    }
+    if (p === '/api/setup' || p.startsWith('/api/setup/')) {
+      if (m !== 'GET' && !String(req.headers['content-type']).startsWith('application/json'))
+        return json(res, 415, { error: 'send JSON' });
+      return setupRoute(req, res, m, p);
     }
     if (m === 'GET' && p === '/auth/plex') return signInStart(req, res);
     if (m === 'GET' && p === '/auth/plex/callback') return signInCallback(req, res);
@@ -229,6 +436,8 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     if (p.startsWith('/api/owner/')) {
       const handled = decisions(res, m, p.slice('/api/owner'.length), 'Media Review');
       if (handled) return handled;
+      if (p === '/api/owner/settings' || p.startsWith('/api/owner/settings/'))
+        return settingsRoute(req, res, m, p.slice('/api/owner/settings'.length));
     }
 
     // Owner only: the API key Media Ops uses.

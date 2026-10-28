@@ -21,7 +21,12 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - Voters can browse Titles, cast and withdraw a Downvote, see Leaving Soon, make an Objection, file a Problem Report, and link a Discord account.
 - Voters see only their own Downvotes and Objections. Only the Owner can see who cast each one.
 - The Owner has a **Review Queue** page with every entry and its details (the same as the Media Ops card) and the decisions: Keep now, Remove (0004) and Problem Reports (0007) later.
-- The Owner has a settings page for every value in [Settings](#settings), and the API key for Media Ops, which is only needed if Media Ops is used.
+- **First setup** (confirmed by the Owner): a fresh install has no Owner. It prints a one-time setup code in its log, and the setup page asks for it before anything else. Then the Owner signs in with the Plex account that owns the server and picks the server and the address to reach it. Media Review keeps that sign-in's token for Plex. The account that owns the linked server is the Owner from then on.
+- **Settings page** (Owner only; confirmed by the Owner): the apps Media Review works with, each with an address, an API key, **Test** and **Save**.
+  - The apps are Plex (address), Tautulli, Radarr, Sonarr and Sonarr (anime).
+  - The page also has the public address, and the API key for Media Ops, which is only needed if Media Ops is used.
+  - Everything is kept in the database in `/config`, not in container variables. Saved keys and the Plex token are never sent back to the browser, and changes apply without a restart.
+  - The rules in [Settings](#settings) get a section here next (ticket 0011).
 
 ### Discord bot
 

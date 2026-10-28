@@ -8,6 +8,7 @@ const path = require('node:path');
 const { openStore } = require('../lib/store');
 const { DEFAULTS, quietTime } = require('../lib/rules');
 const { createApp } = require('../lib/web');
+const { appSettings } = require('../lib/apps');
 
 const NOW = 1_800_000_000;
 
@@ -35,8 +36,12 @@ async function setup(extra = {}) {
   store.replaceTitles([
     { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', year: 2020, thumb: '/library/m1/thumb' },
   ]);
+  // An install whose first setup is done: Plex is linked.
+  const apps = appSettings(store);
+  apps.setPlex({ url: 'http://plex:32400', token: 'owner-token', machineId: 'machine', name: 'Tower' });
   const app = createApp({
     store,
+    apps,
     plex: fakePlex,
     machineId: async () => 'machine',
     settings: DEFAULTS,

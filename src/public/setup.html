@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT · Copyright (c) 2026 KaiserHomeLab · Media Review: first setup, filled in by setup.js. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Review · Setup</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23e5a00d'/><path d='M9 12h14l-7 10z' fill='%231a1a19'/></svg>" />
+    <meta name="theme-color" content="#121211" />
+    <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="style.css" />
+    <script src="setup.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <span class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <div>
+          <h1>Media Review</h1>
+          <div class="sub">first setup</div>
+        </div>
+      </span>
+    </header>
+    <main class="narrow">
+      <p class="notice error" id="error" hidden></p>
+
+      <section class="card form" id="step-code" hidden>
+        <h2>1 · Setup code</h2>
+        <p class="muted">
+          Media Review printed a one-time code in its log when it started. On Unraid: Docker → media-review →
+          Logs. It proves you run this server.
+        </p>
+        <label class="field"><span>Setup code</span>
+          <input id="code" autocomplete="one-time-code" placeholder="ABCD-1234" spellcheck="false" />
+        </label>
+        <div><button class="btn primary" type="button" id="send-code">Continue</button></div>
+      </section>
+
+      <section class="card form" id="step-signin" hidden>
+        <h2>2 · Sign in with Plex</h2>
+        <p class="muted">
+          Sign in with the Plex account that owns your server. Media Review uses this sign-in to read your
+          libraries; you become its Owner, the one who decides.
+        </p>
+        <div><a class="btn primary" href="/auth/plex">Sign in with Plex</a></div>
+      </section>
+
+      <section class="card form" id="step-server" hidden>
+        <h2>3 · Your Plex server</h2>
+        <label class="field"><span>Server</span><select id="server"></select></label>
+        <label class="field"><span>Address Media Review uses to reach it</span>
+          <input id="address" placeholder="http://plex:32400" spellcheck="false" />
+          <small>
+            On the same Docker network as Plex, its container name works: <code>http://plex:32400</code>. Or one
+            of the addresses Plex lists: <span id="known"></span>
+          </small>
+        </label>
+        <div><button class="btn primary" type="button" id="link">Link Plex</button></div>
+      </section>
+    </main>
+  </body>
+</html>
