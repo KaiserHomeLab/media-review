@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS voters (
 );
 CREATE TABLE IF NOT EXISTS titles (
   rating_key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('movie', 'show')),
-  title TEXT NOT NULL, year INTEGER, thumb TEXT, seen INTEGER NOT NULL DEFAULT 1
+  title TEXT NOT NULL, year INTEGER, thumb TEXT, seen INTEGER NOT NULL DEFAULT 1, library TEXT,
+  library_pos INTEGER
 );
 CREATE TABLE IF NOT EXISTS plays (
   id TEXT PRIMARY KEY, voter_id TEXT NOT NULL, title_key TEXT NOT NULL,
@@ -45,7 +46,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 /**
  * @typedef {{ plex_id: string, username: string, thumb: string | null }} VoterRow
  * @typedef {{ rating_key: string, kind: 'movie' | 'show', title: string, year: number | null,
- *   thumb: string | null }} TitleRow
+ *   thumb: string | null, library: string | null }} TitleRow
  * @typedef {{ id: string, voter_id: string, title_key: string, started: number, seconds: number,
  *   watched: number }} PlayRow
  */
@@ -55,6 +56,17 @@ function openStore(file) {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  // Columns added after the first release: add them to databases made before.
+  /** @param {string} table @param {string} column @param {string} type */
+  const addColumn = (table, column, type) => {
+    const has = db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .some(c => c.name === column);
+    if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  };
+  addColumn('titles', 'library', 'TEXT'); // the Plex library: Movies, TV Shows, Anime…
+  addColumn('titles', 'library_pos', 'INTEGER'); // its place in Plex's own list of libraries
 
   /** @param {() => void} fn */
   const tx = fn => {
@@ -74,9 +86,10 @@ function openStore(file) {
        ON CONFLICT (plex_id) DO UPDATE SET username = excluded.username, thumb = excluded.thumb`,
     ),
     upsertTitle: db.prepare(
-      `INSERT INTO titles (rating_key, kind, title, year, thumb, seen) VALUES (?, ?, ?, ?, ?, 1)
-       ON CONFLICT (rating_key) DO UPDATE SET kind = excluded.kind, title = excluded.title,
-         year = excluded.year, thumb = excluded.thumb, seen = 1`,
+      `INSERT INTO titles (rating_key, kind, title, year, thumb, library, library_pos, seen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT (rating_key) DO UPDATE SET kind = excluded.kind, title = excluded.title, year = excluded.year,
+         thumb = excluded.thumb, library = excluded.library, library_pos = excluded.library_pos, seen = 1`,
     ),
     upsertPlay: db.prepare(
       `INSERT INTO plays (id, voter_id, title_key, started, seconds, watched) VALUES (?, ?, ?, ?, ?, ?)
@@ -98,22 +111,43 @@ function openStore(file) {
     voter: plexId => /** @type {any} */ (db.prepare('SELECT * FROM voters WHERE plex_id = ?').get(plexId)),
 
     // Replace the catalogue: titles no longer in Plex stay (their history matters) but are hidden.
-    /** @param {Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year?: number | null, thumb?: string | null }>} list */
+    /**
+     * @param {Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year?: number | null,
+     *   thumb?: string | null, library?: string | null }>} list
+     */
     replaceTitles: list =>
       tx(() => {
         db.exec('UPDATE titles SET seen = 0');
-        for (const t of list) q.upsertTitle.run(t.ratingKey, t.kind, t.title, t.year ?? null, t.thumb ?? null);
+        // Libraries keep the order Plex lists them in (the list comes library by library).
+        const pos = new Map();
+        for (const t of list) {
+          if (t.library != null && !pos.has(t.library)) pos.set(t.library, pos.size);
+          const p = t.library == null ? null : pos.get(t.library);
+          q.upsertTitle.run(t.ratingKey, t.kind, t.title, t.year ?? null, t.thumb ?? null, t.library ?? null, p);
+        }
       }),
+    // The Plex libraries Titles are in, in Plex's order, for the Voter's tabs.
+    /** @returns {Array<{ name: string, kind: 'movie' | 'show', count: number }>} */
+    libraries: () =>
+      db
+        .prepare(
+          `SELECT library AS name, MIN(kind) AS kind, COUNT(*) AS n FROM titles
+           WHERE seen = 1 AND library IS NOT NULL GROUP BY library
+           ORDER BY MIN(library_pos), library COLLATE NOCASE`,
+        )
+        .all()
+        .map(r => ({ name: String(r.name), kind: /** @type {'movie' | 'show'} */ (r.kind), count: Number(r.n) })),
     /** @param {string} key @returns {TitleRow | undefined} */
     title: key => /** @type {any} */ (db.prepare('SELECT * FROM titles WHERE rating_key = ?').get(key)),
-    /** @param {string} search @param {number} limit @returns {TitleRow[]} */
-    searchTitles: (search, limit) =>
+    /** @param {string} search @param {number} limit @param {string} [library] only this Plex library @returns {TitleRow[]} */
+    searchTitles: (search, limit, library) =>
       /** @type {any} */ (
         db
           .prepare(
-            `SELECT * FROM titles WHERE seen = 1 AND title LIKE ? ESCAPE '\\' ORDER BY title COLLATE NOCASE LIMIT ?`,
+            `SELECT * FROM titles WHERE seen = 1 AND title LIKE ? ESCAPE '\\' AND (? IS NULL OR library = ?)
+             ORDER BY title COLLATE NOCASE LIMIT ?`,
           )
-          .all(`%${search.replace(/[\\%_]/g, c => '\\' + c)}%`, limit)
+          .all(`%${search.replace(/[\\%_]/g, c => '\\' + c)}%`, library ?? null, library ?? null, limit)
       ),
 
     /** @param {Array<{ id: string, voterId: string, titleKey: string, started: number, seconds: number, watched: boolean }>} plays */

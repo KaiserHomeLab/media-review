@@ -270,3 +270,61 @@ test('Media Ops Keeps a queued Title with the API key', async () => {
   assert.equal((await (await req('/api/titles', { cookie: voters[0] })).json()).titles[0].downvoted, false);
   assert.equal((await post(voters[0], '/api/titles/m1/downvote')).status, 201);
 });
+
+test('Titles are grouped by their Plex library, so Voters can browse Movies, TV Shows and Anime apart', async () => {
+  const { signIn, req, store } = await setup();
+  store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', library: 'Movies' },
+    { ratingKey: 's1', kind: 'show', title: 'Slow Show', library: 'TV Shows' },
+    { ratingKey: 'a1', kind: 'show', title: 'Loud Anime', library: 'Anime' },
+    { ratingKey: 'a2', kind: 'show', title: 'Another Anime', library: 'Anime' },
+  ]);
+  const alice = (await signIn(2)).cookie;
+  const get = async (/** @type {string} */ p) => (await req(p, { cookie: alice })).json();
+
+  assert.deepEqual((await get('/api/libraries')).libraries, [
+    { name: 'Movies', kind: 'movie', count: 1 },
+    { name: 'TV Shows', kind: 'show', count: 1 },
+    { name: 'Anime', kind: 'show', count: 2 },
+  ]);
+  const anime = (await get('/api/titles?library=Anime')).titles;
+  assert.deepEqual(
+    anime.map((/** @type {any} */ t) => [t.title, t.library]),
+    [
+      ['Another Anime', 'Anime'],
+      ['Loud Anime', 'Anime'],
+    ],
+  );
+  assert.equal((await get('/api/titles')).titles.length, 4);
+});
+
+test('without Media Ops, the signed-in Owner sees the Review Queue and Keeps in Media Review', async () => {
+  const { signIn, req, post, store } = await setup();
+  const owner = (await signIn(1)).cookie;
+  const voters = [(await signIn(2)).cookie, (await signIn(3)).cookie, (await signIn(5)).cookie];
+  store.upsertPlays(
+    ['a', 'b', 'c'].map((v, i) => ({
+      id: String(i),
+      voterId: v,
+      titleKey: 'm1',
+      started: NOW - 60,
+      seconds: 3600,
+      watched: true,
+    })),
+  );
+  await post(voters[0], '/api/titles/m1/downvote');
+  await post(voters[1], '/api/titles/m1/downvote');
+
+  // No API key has ever been made: this is all through the Owner's session.
+  assert.equal((await req('/api/owner/review-queue', { cookie: voters[0] })).status, 403);
+  assert.equal((await post(voters[0], '/api/owner/review-queue/m1/keep')).status, 403);
+  const { reviewQueue } = await (await req('/api/owner/review-queue', { cookie: owner })).json();
+  assert.deepEqual(
+    reviewQueue.map((/** @type {any} */ e) => [e.title.name, e.downvotes.map((/** @type {any} */ d) => d.voter)]),
+    [['Dull Movie', ['alice', 'bob']]],
+  );
+
+  assert.deepEqual(await (await post(owner, '/api/owner/review-queue/m1/keep')).json(), { kept: true });
+  assert.deepEqual(await (await post(owner, '/api/owner/review-queue/m1/keep')).json(), { error: 'not-queued' });
+  assert.deepEqual((await (await req('/api/owner/review-queue', { cookie: owner })).json()).reviewQueue, []);
+});

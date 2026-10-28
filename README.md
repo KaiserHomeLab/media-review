@@ -1,6 +1,8 @@
 # Media Review
 
-Friends who use a Plex server Downvote movies and shows they think should leave the library. When enough of the people who've actually tried a Title agree, it goes to the Review Queue, and the Owner decides Keep or Remove from [Media Ops](https://github.com/KaiserHomeLab/media-ops). Nothing is ever removed automatically.
+Friends who use a Plex server Downvote movies and shows they think should leave the library. When enough of the people who've actually tried a Title agree, it goes to the Review Queue, and the Owner decides Keep or Remove on Media Review's own Review Queue page. Nothing is ever removed automatically.
+
+It works on its own. If you also run [Media Ops](https://github.com/KaiserHomeLab/media-ops), you can connect the two and decide from either.
 
 - What the words mean: [CONTEXT.md](CONTEXT.md)
 - What it does: [docs/spec.md](docs/spec.md)
@@ -15,7 +17,7 @@ Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, n
 2. Set **Network Type** to the custom network Plex and Tautulli are on. Media Review then reaches them by container name: the defaults are `http://plex:32400` and `http://tautulli:8181`. If Plex runs on host networking, use the server's LAN IP for Plex instead.
 3. Fill in the Plex token, the Tautulli API key, and the **Public address** (below).
 4. Keep **Appdata** on the cache pool. SQLite is unreliable through `/mnt/user`'s FUSE layer unless appdata is an exclusive share, so use `/mnt/cache/appdata/media-review` if it isn't.
-5. Apply, then open the web UI and sign in with Plex as the server owner. Open **API key**, generate a key, and add Media Review in Media Ops under Settings → Add app with `http://media-review:8485` and that key.
+5. Apply, then open the web UI and sign in with Plex as the server owner. The **Review Queue** is in the top bar. To use Media Ops too (optional), generate a key under **Media Ops** on that page, and add Media Review in Media Ops under Settings → Add app with `http://media-review:8485` and that key.
 
 **Reaching it from outside, with a Cloudflare Tunnel:** add a public hostname, for example `review.example.com`, with the service `http://media-review:8485`. The cloudflared container must be on the same custom network. Set **Public address** to `https://review.example.com`, so Plex sign-in comes back there and session cookies are Secure.
 
@@ -43,11 +45,13 @@ npm start
 | `DATA_DIR` | no | Where the SQLite file lives. Default `src/data` |
 | `SYNC_MINUTES` | no | How often to pull from Plex and Tautulli. Default `15` |
 
-Voters sign in with Plex at the app's address. The Owner signs in the same way, opens **API key**, generates a key, and adds Media Review in Media Ops under Settings → Add app with this address and that key.
+Voters sign in with Plex at the app's address. The Owner signs in the same way and finds the **Review Queue** in the top bar.
+
+To connect Media Ops as well (optional): on the Review Queue page, generate a key under **Media Ops**, then add Media Review in Media Ops under Settings → Add app with this address and that key.
 
 Behind a reverse proxy without `PUBLIC_URL`, pass `X-Forwarded-Proto` and `X-Forwarded-Host`, so Plex sign-in comes back to the right address and cookies are marked Secure.
 
-## API for Media Ops
+## API for Media Ops (optional)
 
 Every request sends the key as `X-Api-Key`.
 

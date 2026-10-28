@@ -4,10 +4,10 @@ Vertical slices of [the spec](../spec.md), in build order. Each ticket cuts thro
 
 | # | Ticket | Blocked by |
 |---|---|---|
-| 0001 | [Downvote a Title until it shows on a Media Ops Review Queue card](0001-downvote-to-review-queue.md) | none |
+| 0001 | [Downvote a Title until it reaches the Review Queue](0001-downvote-to-review-queue.md) | none |
 | 0002 | [Withdraw a Downvote, and freeze Downvotes once queued](0002-withdraw-and-freeze.md) | 0001 |
-| 0003 | [Keep from Media Ops](0003-keep.md) | 0001 |
-| 0004 | [Remove from Media Ops into Leaving Soon](0004-remove-to-leaving-soon.md) | 0001 |
+| 0003 | [Keep](0003-keep.md) | 0001 |
+| 0004 | [Remove into Leaving Soon](0004-remove-to-leaving-soon.md) | 0001 |
 | 0005 | [Delete a Title when Leaving Soon ends](0005-delete-after-leaving-soon.md) | 0004 |
 | 0006 | [Objection sends a Title back once](0006-objection.md) | 0004 |
 | 0007 | [Problem Reports](0007-problem-reports.md) | 0001 |
@@ -18,3 +18,5 @@ Vertical slices of [the spec](../spec.md), in build order. Each ticket cuts thro
 | 0012 | [Package and deploy on Unraid](0012-package-and-deploy.md) | 0001 |
 
 0002, 0003, 0004, 0007, 0009, 0011 and 0012 can be built in parallel once 0001 is done.
+
+Every Owner decision is built in Media Review's own web app as well as in Media Ops, which is optional (ADR 0003).

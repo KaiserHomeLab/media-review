@@ -12,6 +12,10 @@ number, a fix the last one.
   reaches the Review Queue. They're told when a Downvote won't count until they've tried the Title.
 - The weighting and threshold rules: Sample, Base Weight, Title Bonus, Audience and Minimum Audience.
   Voters, play history and Titles come from Tautulli and Plex.
-- An API for Media Ops: the Review Queue, and Keep.
+- The Owner's own Review Queue page with Keep, so Media Review works without Media Ops. Media Ops is
+  an optional second place to decide, through the API: the Review Queue, and Keep.
+- Titles sorted by Plex library: a tab per library (Movies, TV Shows, Anime…, as named and ordered in
+  Plex), and each title labelled with its library.
+- The same look as Media Ops: colours, light mode, the Inter font, cards and buttons.
 - A Docker image (`ghcr.io/kaiserhomelab/media-review`) on the linuxserver.io Alpine base, and an
   Unraid template.

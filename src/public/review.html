@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT · Copyright (c) 2026 KaiserHomeLab · Media Review: the Owner's Review Queue, filled in by review.js. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Review · Review Queue</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23e5a00d'/><path d='M9 12h14l-7 10z' fill='%231a1a19'/></svg>" />
+    <meta name="theme-color" content="#121211" />
+    <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="style.css" />
+    <script src="review.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/">
+        <span class="logo" aria-hidden="true"></span>
+        <div>
+          <h1>Media Review</h1>
+          <div class="sub">Owner</div>
+        </div>
+      </a>
+      <div class="top-right">
+        <a class="btn small ghost" href="/">← <span class="hide-sm">Library</span></a>
+      </div>
+    </header>
+    <main>
+      <p class="notice error" id="error" hidden></p>
+
+      <section class="card" id="queue-card" hidden>
+        <h2>Review Queue <span class="count" id="queue-count"></span></h2>
+        <ul class="queue" id="queue"></ul>
+      </section>
+
+      <section class="card panel" id="key-card" hidden>
+        <h2>Media Ops <span class="count">optional</span></h2>
+        <p class="muted">
+          Only needed if you also want to decide from Media Ops: open Settings → Add app → Media Review there, and
+          enter this server's address and this key. Making a new key stops the old one working straight away.
+        </p>
+        <div class="key" id="key">No key yet.</div>
+        <button class="btn" type="button" id="generate">Generate a key</button>
+      </section>
+    </main>
+  </body>
+</html>

@@ -32,35 +32,32 @@ function showError(msg) {
 
 let me = null;
 
+const el = (/** @type {string} */ tag, /** @type {string} */ cls, /** @type {string} */ text = '') =>
+  Object.assign(document.createElement(tag), { className: cls, textContent: text });
+
 function card(t) {
-  const li = document.createElement('li');
-  li.className = 'card';
-  const img = document.createElement(t.poster ? 'img' : 'div');
-  img.className = 'poster';
+  const li = el('li', 'tile');
+  const img = el(t.poster ? 'img' : 'div', 'poster');
   if (t.poster) Object.assign(img, { src: t.poster, alt: '', loading: 'lazy' });
-  const body = document.createElement('div');
-  body.className = 'body';
-  const name = document.createElement('div');
-  name.className = 'name';
-  name.textContent = t.title;
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  meta.textContent = [t.kind === 'movie' ? 'Movie' : 'Show', t.year].filter(Boolean).join(' · ');
-  body.append(name, meta);
+  const body = el('div', 'body');
+  const meta = el('div', 'meta');
+  meta.append(el('span', 'chip', t.library ?? (t.kind === 'movie' ? 'Movie' : 'Show')));
+  if (t.year) meta.append(el('span', 'chip', String(t.year)));
+  if (t.inReview) meta.append(el('span', 'chip review', 'In review'));
+  body.append(el('div', 'name', t.title), meta);
 
   // A Downvote only counts once the Voter has given the Title a real try (a Sample), so say so.
   const untried = !t.sampled && !t.inReview && !me.isOwner;
-  const tryNote = () => {
-    const note = document.createElement('div');
-    note.className = 'note';
-    note.textContent = `Counts once you've watched ${me.sampleMinutes[t.kind]} minutes of it.`;
-    return note;
-  };
+  const tryNote = () => el('div', 'note', `Counts once you've watched ${me.sampleMinutes[t.kind]} minutes of it.`);
 
   // Downvote, or Withdraw it again, until the Title is with the Owner.
   const action = (/** @type {'downvote' | 'withdraw'} */ what) => {
-    const btn = document.createElement('button');
-    btn.textContent = what === 'downvote' ? 'Downvote' : 'Withdraw';
+    const btn = el(
+      'button',
+      what === 'downvote' ? 'btn small' : 'btn small ghost',
+      what === 'downvote' ? '▼ Downvote' : 'Withdraw',
+    );
+    btn.type = 'button';
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       showError('');
@@ -78,33 +75,67 @@ function card(t) {
     return btn;
   };
 
-  if (t.inReview || me.isOwner) {
-    const state = document.createElement('div');
-    state.className = 'state';
-    state.textContent = t.inReview ? 'With the Owner for review' : '';
-    body.append(state);
+  const acts = el('div', 'acts');
+  if (t.inReview) acts.append(el('div', 'state', 'With the Owner for review'));
+  else if (me.isOwner) {
+    // the Owner only looks
   } else if (t.downvoted) {
-    const state = document.createElement('div');
-    state.className = 'state';
-    state.textContent = 'You Downvoted this';
-    body.append(state, action('withdraw'));
-    if (untried) body.append(tryNote());
+    acts.append(el('div', 'state', 'You Downvoted this'), action('withdraw'));
+    if (untried) acts.append(tryNote());
   } else {
-    body.append(action('downvote'));
-    if (untried) body.append(tryNote());
+    acts.append(action('downvote'));
+    if (untried) acts.append(tryNote());
   }
+  body.append(acts);
   li.append(img, body);
   return li;
 }
 
+// The library tab ('' is All), remembered in this browser only.
+const TAB_KEY = 'media-review:library';
+let library = '';
+try {
+  library = localStorage.getItem(TAB_KEY) ?? '';
+} catch {}
+let query = '';
+
+// One tab per Plex library (Movies, TV Shows, Anime…), named as in Plex.
+async function loadTabs() {
+  const { libraries } = await api('/api/libraries');
+  if (!libraries.some(l => l.name === library)) library = '';
+  const tab = (/** @type {string} */ name, /** @type {string} */ label, /** @type {number} */ n) => {
+    const b = el('button', '', label);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(name === library));
+    b.append(el('span', 'n', String(n)));
+    b.addEventListener('click', () => {
+      library = name;
+      try {
+        localStorage.setItem(TAB_KEY, name);
+      } catch {}
+      for (const x of $('tabs').children) x.setAttribute('aria-selected', String(x === b));
+      load();
+    });
+    return b;
+  };
+  const total = libraries.reduce((sum, l) => sum + l.count, 0);
+  $('tabs').replaceChildren(tab('', 'All', total), ...libraries.map(l => tab(l.name, l.name, l.count)));
+  $('tabs').hidden = libraries.length < 2;
+}
+
 let pending = 0;
-async function load(q) {
+async function load() {
   const ticket = ++pending;
+  const q = query;
   try {
-    const { titles } = await api(`/api/titles?q=${encodeURIComponent(q)}`);
+    const params = new URLSearchParams({ q });
+    if (library) params.set('library', library);
+    const { titles } = await api(`/api/titles?${params}`);
     if (ticket !== pending) return; // a newer search is on its way
     $('titles').replaceChildren(...titles.map(card));
     $('empty').hidden = titles.length > 0;
+    $('count').textContent = `${titles.length}${titles.length === 60 ? '+' : ''} ${q ? 'found' : 'titles'}`;
   } catch (e) {
     showError(e.message);
   }
@@ -123,17 +154,28 @@ async function start() {
     }
     return;
   }
-  $('who').textContent = me.username;
+  $('who').textContent = me.isOwner ? `${me.username} · Owner` : me.username;
   $('logout').hidden = false;
   $('owner-link').hidden = !me.isOwner;
   $('owner-note').hidden = !me.isOwner;
+  if (me.isOwner)
+    api('/api/owner/review-queue')
+      .then(({ reviewQueue }) => {
+        $('queue-badge').textContent = String(reviewQueue.length);
+        $('queue-badge').hidden = !reviewQueue.length;
+      })
+      .catch(() => {});
   $('app').hidden = false;
   let timer;
   $('search').addEventListener('input', e => {
     clearTimeout(timer);
-    timer = setTimeout(() => load(/** @type {HTMLInputElement} */ (e.target).value), 200);
+    timer = setTimeout(() => {
+      query = /** @type {HTMLInputElement} */ (e.target).value;
+      load();
+    }, 200);
   });
-  load('');
+  await loadTabs().catch(e => showError(e.message));
+  load();
 }
 
 $('logout').addEventListener('click', async () => {

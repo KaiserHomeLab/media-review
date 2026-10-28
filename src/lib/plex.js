@@ -62,7 +62,7 @@ function plex(cfg) {
     machineId: async () => (await server('/identity')).MediaContainer.machineIdentifier,
 
     // Every whole movie and whole show, across all movie and show libraries.
-    /** @returns {Promise<Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year: number | null, thumb: string | null }>>} */
+    /** @returns {Promise<Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year: number | null, thumb: string | null, library: string }>>} */
     async titles() {
       const sections = /** @type {any[]} */ ((await server('/library/sections')).MediaContainer.Directory ?? []);
       const out = [];
@@ -77,6 +77,7 @@ function plex(cfg) {
             title: String(m.title),
             year: m.year ?? null,
             thumb: m.thumb ?? null,
+            library: String(s.title), // as named in Plex: Movies, TV Shows, Anime…
           });
       }
       return out;
