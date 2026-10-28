@@ -92,6 +92,11 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 
 - A Removed Title goes to Leaving Soon for the Leaving Soon length, never straight to deletion.
 - During Leaving Soon the Title stays visible to everyone: in a pinned "Leaving Soon" collection in Plex that Media Review keeps in sync, on the web app, and as a Discord announcement.
+  - Plex: one "Leaving Soon" collection in each library that has a Leaving Soon Title, pinned to friends' Home, the Owner's Home and the library's Recommended tab (confirmed by the Owner). A library with none left has its collection deleted, so nothing empty stays pinned.
+  - Web app: a Leaving Soon tab in the library, and a "Leaving in N days" label on the Title's tile (confirmed by the Owner).
+  - Remove takes no note: friends see the Title and the day it leaves (confirmed by the Owner).
+- No new Downvotes are taken on a Title that is Leaving Soon.
+- **Keep after all:** the Owner can Keep a Title while it is Leaving Soon, in Media Review or Media Ops (confirmed by the Owner). It is an ordinary Keep: the Title leaves Leaving Soon and the collection, and its Downvotes are cleared.
 - When Leaving Soon ends with no successful Objection, Media Review deletes the Title through Radarr (movie) or Sonarr (show), including its files. It also removes the Title from the Leaving Soon collection.
 
 ### Objection

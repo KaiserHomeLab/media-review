@@ -14,6 +14,7 @@ const { tautulli: tautulliClient } = require('./lib/tautulli');
 const { DEFAULTS } = require('./lib/rules');
 const { sync } = require('./lib/sync');
 const { createApp } = require('./lib/web');
+const { syncLeavingSoon } = require('./lib/collections');
 
 /** @param {string} name */
 const need = name => {
@@ -46,6 +47,29 @@ const machineId = () =>
     throw e;
   }));
 
+// Bring Plex's Leaving Soon collections in step, one run at a time; a change during a run gets another run.
+let collections = Promise.resolve();
+let again = false;
+let busy = false;
+const updateCollections = () => {
+  if (busy) {
+    again = true;
+    return collections;
+  }
+  busy = true;
+  collections = (async () => {
+    try {
+      do {
+        again = false;
+        await syncLeavingSoon({ store, plex, machineId, log });
+      } while (again);
+    } finally {
+      busy = false;
+    }
+  })();
+  return collections;
+};
+
 const app = createApp({
   store,
   plex,
@@ -55,6 +79,7 @@ const app = createApp({
   log,
   publicDir: path.join(__dirname, 'public'),
   publicUrl: process.env.PUBLIC_URL || undefined,
+  leavingChanged: () => void updateCollections(),
 });
 const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));
@@ -66,6 +91,7 @@ const runSync = async () => {
   running = true;
   try {
     await sync({ store, plex, tautulli, settings: DEFAULTS, now, log });
+    await updateCollections();
   } finally {
     running = false;
   }

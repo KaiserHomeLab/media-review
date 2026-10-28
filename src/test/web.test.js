@@ -29,7 +29,7 @@ const fakePlex = /** @type {any} */ ({
   poster: async () => new Response('img', { headers: { 'content-type': 'image/jpeg' } }),
 });
 
-/** @param {{ publicUrl?: string }} [extra] */
+/** @param {{ publicUrl?: string, leavingChanged?: () => void }} [extra] */
 async function setup(extra = {}) {
   const store = openStore(':memory:');
   store.replaceTitles([
@@ -327,4 +327,58 @@ test('without Media Ops, the signed-in Owner sees the Review Queue and Keeps in 
   assert.deepEqual(await (await post(owner, '/api/owner/review-queue/m1/keep')).json(), { kept: true });
   assert.deepEqual(await (await post(owner, '/api/owner/review-queue/m1/keep')).json(), { error: 'not-queued' });
   assert.deepEqual((await (await req('/api/owner/review-queue', { cookie: owner })).json()).reviewQueue, []);
+});
+
+test('Remove and Keep after all, from Media Review and from Media Ops; Voters see the days left, not who', async () => {
+  let changes = 0;
+  const { signIn, req, post, store } = await setup({ leavingChanged: () => changes++ });
+  const owner = (await signIn(1)).cookie;
+  const voters = [(await signIn(2)).cookie, (await signIn(3)).cookie, (await signIn(5)).cookie];
+  store.upsertPlays(
+    ['a', 'b', 'c'].map((v, i) => ({
+      id: String(i),
+      voterId: v,
+      titleKey: 'm1',
+      started: NOW - 60,
+      seconds: 3600,
+      watched: true,
+    })),
+  );
+  await post(voters[0], '/api/titles/m1/downvote');
+  await post(voters[1], '/api/titles/m1/downvote');
+
+  // Owner removes it in Media Review.
+  assert.equal((await post(voters[0], '/api/owner/review-queue/m1/remove')).status, 403);
+  const removed = await (await post(owner, '/api/owner/review-queue/m1/remove')).json();
+  assert.deepEqual(removed, { removed: true, endsAt: new Date((NOW + 14 * 86400) * 1000).toISOString() });
+  assert.equal(changes, 1);
+
+  // Voters: the tile says 14 days, the Leaving Soon tab lists it, and nobody's name is in either.
+  const tile = (await (await req('/api/titles', { cookie: voters[2] })).json()).titles[0];
+  assert.equal(tile.leavingInDays, 14);
+  const tab = (await (await req('/api/titles?leaving=1', { cookie: voters[2] })).json()).titles;
+  assert.deepEqual(
+    tab.map((/** @type {any} */ t) => t.title),
+    ['Dull Movie'],
+  );
+  const list = await (await req('/api/leaving-soon', { cookie: voters[2] })).text();
+  assert.match(list, /Dull Movie/);
+  assert.doesNotMatch(list, /alice|bob/);
+  const refused = await post(voters[2], '/api/titles/m1/downvote');
+  assert.deepEqual([refused.status, await refused.json()], [409, { error: 'leaving' }]);
+
+  // Media Ops sees the same Leaving Soon list, and Keeps it after all with the API key.
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+  const key = { 'x-api-key': apiKey };
+  const viaOps = await (await req('/api/v1/leaving-soon', { headers: key })).json();
+  assert.equal(viaOps.leavingSoon[0].daysLeft, 14);
+  const queueKeep = await req('/api/v1/review-queue/m1/keep', { method: 'POST', headers: key });
+  assert.deepEqual(await queueKeep.json(), { error: 'not-queued' });
+  const keptAfterAll = await req('/api/v1/leaving-soon/m1/keep', { method: 'POST', headers: key });
+  assert.deepEqual(await keptAfterAll.json(), { kept: true });
+  assert.equal(changes, 2);
+  assert.deepEqual((await (await req('/api/owner/leaving-soon', { cookie: owner })).json()).leavingSoon, []);
+  const again = await post(owner, '/api/owner/leaving-soon/m1/keep');
+  assert.deepEqual(await again.json(), { error: 'not-leaving' });
+  assert.equal((await post(owner, '/api/owner/leaving-soon/m1/remove')).status, 404);
 });

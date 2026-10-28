@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
-const { castDownvote, withdrawDownvote, keep, sampledBy, reviewQueue } = require('./review');
+const { castDownvote, withdrawDownvote, keep, remove, leavingSoon, sampledBy, reviewQueue } = require('./review');
 
 const SESSION_DAYS = 30;
 const VERSION = require('../package.json').version;
@@ -31,9 +31,10 @@ const TYPES = /** @type {Record<string, string>} */ ({
 /**
  * @param {{ store: import('./store').Store, plex: ReturnType<typeof import('./plex').plex>,
  *   machineId: () => Promise<string>, settings: import('./rules').Settings, now: () => number,
- *   log: (msg: string) => void, publicDir: string, publicUrl?: string }} ctx
+ *   log: (msg: string) => void, publicDir: string, publicUrl?: string,
+ *   leavingChanged?: () => void }} ctx
  */
-function createApp({ store, plex, machineId, settings, now, log, publicDir, publicUrl }) {
+function createApp({ store, plex, machineId, settings, now, log, publicDir, publicUrl, leavingChanged = () => {} }) {
   const fixedBase = publicUrl ? publicUrl.replace(/\/+$/, '') : null;
   /** @param {Res} res @param {number} status @param {unknown} body */
   const json = (res, status, body) => {
@@ -128,9 +129,8 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     if (p.startsWith('/api/v1/')) {
       if (!apiKeyOk(req)) return json(res, 401, { error: 'invalid API key' });
       if (m === 'GET' && p === '/api/v1/status') return json(res, 200, { app: 'media-review', version: VERSION });
-      if (m === 'GET' && p === '/api/v1/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
-      const decide = p.match(/^\/api\/v1\/review-queue\/([^/]+)\/keep$/);
-      if (m === 'POST' && decide) return decideKeep(res, decodeURIComponent(decide[1]), 'Media Ops');
+      const handled = decisions(res, m, p.slice('/api/v1'.length), 'Media Ops');
+      if (handled) return handled;
       const poster = p.match(/^\/api\/v1\/poster\/([^/]+)$/);
       if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
       return json(res, 404, { error: 'not found' });
@@ -171,13 +171,23 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     }
 
     if (m === 'GET' && p === '/api/libraries') return json(res, 200, { libraries: store.libraries() });
+    // Everyone sees what's Leaving Soon and when; never who Downvoted it.
+    if (m === 'GET' && p === '/api/leaving-soon') return json(res, 200, { leavingSoon: leavingSoon(store, now()) });
 
     if (m === 'GET' && p === '/api/titles') {
       const mine = store.downvotedBy(s.plexId);
       const sampled = sampledBy(store, settings, s.plexId);
       const q = (url.searchParams.get('q') ?? '').slice(0, 100);
       const library = url.searchParams.get('library') || undefined;
-      const titles = store.searchTitles(q, 60, library).map(t => ({
+      const leaving = new Map(leavingSoon(store, now()).map(l => [l.ratingKey, l.daysLeft]));
+      // ?leaving=1: only what's Leaving Soon, soonest first (the library's Leaving Soon tab).
+      const rows =
+        url.searchParams.get('leaving') === '1'
+          ? [...leaving.keys()]
+              .map(k => store.title(k))
+              .filter(t => !!t && t.title.toLowerCase().includes(q.toLowerCase()))
+          : store.searchTitles(q, 60, library);
+      const titles = /** @type {import('./store').TitleRow[]} */ (rows).map(t => ({
         ratingKey: t.rating_key,
         kind: t.kind,
         title: t.title,
@@ -187,6 +197,7 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
         downvoted: mine.has(t.rating_key), // a Voter sees only their own Downvotes
         sampled: sampled(t), // their Downvote only counts once this is true
         inReview: store.isQueued(t.rating_key),
+        leavingInDays: leaving.get(t.rating_key) ?? null,
       }));
       return json(res, 200, { titles });
     }
@@ -206,7 +217,7 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
         const t = /** @type {import('./store').TitleRow} */ (store.title(key));
         return json(res, 201, { downvoted: true, counts: sampledBy(store, settings, s.plexId)(t) });
       }
-      const status = { 'unknown-title': 404, 'already-downvoted': 409, queued: 409 }[r.error];
+      const status = { 'unknown-title': 404, 'already-downvoted': 409, queued: 409, leaving: 409 }[r.error];
       return json(res, status, { error: r.error });
     }
 
@@ -215,9 +226,10 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
 
     // Owner only: the Review Queue and its decisions, the same ones Media Ops can make (ADR 0003).
     if (p.startsWith('/api/owner/') && !s.isOwner) return json(res, 403, { error: 'Owner only' });
-    if (m === 'GET' && p === '/api/owner/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
-    const ownerKeep = p.match(/^\/api\/owner\/review-queue\/([^/]+)\/keep$/);
-    if (m === 'POST' && ownerKeep) return decideKeep(res, decodeURIComponent(ownerKeep[1]), 'Media Review');
+    if (p.startsWith('/api/owner/')) {
+      const handled = decisions(res, m, p.slice('/api/owner'.length), 'Media Review');
+      if (handled) return handled;
+    }
 
     // Owner only: the API key Media Ops uses.
     if (p === '/api/owner/api-key') {
@@ -233,13 +245,33 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
     return json(res, 404, { error: 'not found' });
   }
 
-  // The Owner's Keep, from Media Ops or from Media Review's own Review Queue page.
-  /** @param {Res} res @param {string} key @param {string} via */
-  function decideKeep(res, key, via) {
-    const r = keep(store, key, now());
+  // The Owner's routes, the same under /api/v1 (Media Ops, API key) and /api/owner (the Owner's session), so a
+  // decision behaves the same wherever it's made (ADR 0003):
+  //   GET  /review-queue                 POST /review-queue/:key/keep    POST /review-queue/:key/remove
+  //   GET  /leaving-soon                 POST /leaving-soon/:key/keep    (Keep after all)
+  /** @param {Res} res @param {string | undefined} m @param {string} sub the path after the prefix @param {string} via */
+  function decisions(res, m, sub, via) {
+    if (m === 'GET' && sub === '/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
+    if (m === 'GET' && sub === '/leaving-soon') return json(res, 200, { leavingSoon: leavingSoon(store, now()) });
+    const d = sub.match(/^\/(review-queue|leaving-soon)\/([^/]+)\/(keep|remove)$/);
+    if (m !== 'POST' || !d || (d[1] === 'leaving-soon' && d[3] !== 'keep')) return null;
+    const key = decodeURIComponent(d[2]);
+    const name = store.title(key)?.title ?? key;
+    if (d[3] === 'keep') {
+      // Keep after all only applies to a Leaving Soon Title; Keep in the queue only to a queued one.
+      const r = (d[1] === 'leaving-soon' ? store.isLeaving(key) : store.isQueued(key))
+        ? keep(store, key, now())
+        : { ok: false, error: d[1] === 'leaving-soon' ? 'not-leaving' : 'not-queued' };
+      if (!r.ok) return json(res, 409, { error: r.error });
+      log(`${d[1] === 'leaving-soon' ? 'Keep after all' : 'Keep'} (${via}): ${name}`);
+      if (d[1] === 'leaving-soon') leavingChanged();
+      return json(res, 200, { kept: true });
+    }
+    const r = remove(store, settings, key, now());
     if (!r.ok) return json(res, 409, { error: r.error });
-    log(`Keep (${via}): ${store.title(key)?.title ?? key}`);
-    return json(res, 200, { kept: true });
+    log(`Remove (${via}): ${name}, Leaving Soon until ${new Date(r.endsAt * 1000).toISOString().slice(0, 10)}`);
+    leavingChanged();
+    return json(res, 200, { removed: true, endsAt: new Date(r.endsAt * 1000).toISOString() });
   }
 
   // A Title's poster, resized by Plex, so neither the browser nor Media Ops needs a Plex token.

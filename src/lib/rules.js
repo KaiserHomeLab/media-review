@@ -8,7 +8,7 @@
 /**
  * @typedef {'movie' | 'show'} Kind
  * @typedef {{ sampleMovieMinutes: number, sampleShowMinutes: number, minimumAudience: number,
- *   downvoteShare: number, baseWeightDays: number, titleBonus: number }} Settings
+ *   downvoteShare: number, baseWeightDays: number, titleBonus: number, leavingSoonDays: number }} Settings
  * @typedef {{ seconds: number, watched: boolean }} Play
  * @typedef {{ id: string, baseWeight: number, sampled: boolean }} Voter
  */
@@ -21,6 +21,7 @@ const DEFAULTS = {
   downvoteShare: 0.5,
   baseWeightDays: 90,
   titleBonus: 2,
+  leavingSoonDays: 14,
 };
 
 // A Sample: play time on the Title adds up to the Sample length for its kind, or any play is a Watch.

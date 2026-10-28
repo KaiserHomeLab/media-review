@@ -18,7 +18,7 @@ const currentBaseWeights = (store, s, now) => baseWeights(store.watchSecondsSinc
 /** @param {Store} store @param {Settings} s @param {string} titleKey @param {number} now @param {Map<string, number>} [bases] */
 function evaluate(store, s, titleKey, now, bases = currentBaseWeights(store, s, now)) {
   const title = store.title(titleKey);
-  if (!title || store.isQueued(titleKey)) return false;
+  if (!title || store.isQueued(titleKey) || store.isLeaving(titleKey)) return false;
 
   /** @type {Map<string, Array<{ seconds: number, watched: boolean }>>} */
   const playsByVoter = new Map();
@@ -65,21 +65,23 @@ function evaluateAll(store, s, now) {
 
 /**
  * @param {Store} store @param {Settings} s @param {string} voterId @param {string} titleKey @param {number} now
- * @returns {{ ok: true, queued: boolean } | { ok: false, error: 'unknown-title' | 'already-downvoted' | 'queued' }}
+ * @returns {{ ok: true, queued: boolean } | { ok: false, error: 'unknown-title' | 'already-downvoted' | 'queued' | 'leaving' }}
  */
 function castDownvote(store, s, voterId, titleKey, now) {
   if (!store.title(titleKey)) return { ok: false, error: 'unknown-title' };
   if (store.isQueued(titleKey)) return { ok: false, error: 'queued' };
+  if (store.isLeaving(titleKey)) return { ok: false, error: 'leaving' };
   if (!store.addDownvote(voterId, titleKey, now)) return { ok: false, error: 'already-downvoted' };
   return { ok: true, queued: evaluate(store, s, titleKey, now) };
 }
 
 /**
  * @param {Store} store @param {Settings} s @param {string} voterId @param {string} titleKey @param {number} now
- * @returns {{ ok: true } | { ok: false, error: 'not-downvoted' | 'queued' }}
+ * @returns {{ ok: true } | { ok: false, error: 'not-downvoted' | 'queued' | 'leaving' }}
  */
 function withdrawDownvote(store, s, voterId, titleKey, now) {
   if (store.isQueued(titleKey)) return { ok: false, error: 'queued' };
+  if (store.isLeaving(titleKey)) return { ok: false, error: 'leaving' };
   if (!store.removeDownvote(voterId, titleKey)) return { ok: false, error: 'not-downvoted' };
   evaluate(store, s, titleKey, now);
   return { ok: true };
@@ -93,12 +95,42 @@ function applyWatches(store) {
   return watched;
 }
 
-// The Owner's Keep, from Media Ops.
+// The Owner's Keep, from the Review Queue or, as "Keep after all", while the Title is Leaving Soon.
 /** @param {Store} store @param {string} titleKey @param {number} now @returns {{ ok: true } | { ok: false, error: 'not-queued' }} */
 function keep(store, titleKey, now) {
-  if (!store.isQueued(titleKey)) return { ok: false, error: 'not-queued' };
+  if (!store.isQueued(titleKey) && !store.isLeaving(titleKey)) return { ok: false, error: 'not-queued' };
   store.keep(titleKey, now);
   return { ok: true };
+}
+
+// The Owner's Remove: Leaving Soon for the Leaving Soon length, never straight to deletion.
+/**
+ * @param {Store} store @param {Settings} s @param {string} titleKey @param {number} now
+ * @returns {{ ok: true, endsAt: number } | { ok: false, error: 'not-queued' }}
+ */
+function remove(store, s, titleKey, now) {
+  if (!store.isQueued(titleKey)) return { ok: false, error: 'not-queued' };
+  const endsAt = now + s.leavingSoonDays * DAY;
+  store.remove(titleKey, now, endsAt);
+  return { ok: true, endsAt };
+}
+
+// Everything Leaving Soon, soonest first. Shown to everyone, so it never says who Downvoted.
+/** @param {Store} store @param {number} now */
+function leavingSoon(store, now) {
+  return store.leavingSoon().map(l => {
+    const t = store.title(l.title_key);
+    return {
+      ratingKey: l.title_key,
+      kind: t?.kind,
+      name: t?.title,
+      year: t?.year ?? null,
+      library: t?.library ?? null,
+      removedAt: iso(l.removed_at),
+      endsAt: iso(l.ends_at),
+      daysLeft: Math.max(0, Math.ceil((l.ends_at - now) / DAY)),
+    };
+  });
 }
 
 // Which Titles one Voter has Sampled: their Downvote only counts on those (Q5), and they're told so.
@@ -149,4 +181,15 @@ const iso = t => new Date(t * 1000).toISOString();
 /** @param {number} n */
 const round = n => Math.round(n * 100) / 100;
 
-module.exports = { evaluate, evaluateAll, castDownvote, withdrawDownvote, applyWatches, keep, sampledBy, reviewQueue };
+module.exports = {
+  remove,
+  leavingSoon,
+  evaluate,
+  evaluateAll,
+  castDownvote,
+  withdrawDownvote,
+  applyWatches,
+  keep,
+  sampledBy,
+  reviewQueue,
+};

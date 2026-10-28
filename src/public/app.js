@@ -14,6 +14,7 @@ const SIGNIN_ERRORS = {
 const ERRORS = {
   'already-downvoted': 'You already Downvoted this.',
   queued: 'This is already with the Owner for review.',
+  leaving: "This is already Leaving Soon, so it can't be Downvoted.",
   'unknown-title': 'That title is no longer in the library.',
   'not-downvoted': "You hadn't Downvoted this.",
 };
@@ -32,6 +33,9 @@ function showError(msg) {
 
 let me = null;
 
+/** @param {number} days */
+const leavingText = days => (days <= 0 ? 'Leaving today' : days === 1 ? 'Leaving tomorrow' : `Leaving in ${days} days`);
+
 const el = (/** @type {string} */ tag, /** @type {string} */ cls, /** @type {string} */ text = '') =>
   Object.assign(document.createElement(tag), { className: cls, textContent: text });
 
@@ -44,10 +48,12 @@ function card(t) {
   meta.append(el('span', 'chip', t.library ?? (t.kind === 'movie' ? 'Movie' : 'Show')));
   if (t.year) meta.append(el('span', 'chip', String(t.year)));
   if (t.inReview) meta.append(el('span', 'chip review', 'In review'));
+  if (t.leavingInDays != null) meta.append(el('span', 'chip review', leavingText(t.leavingInDays)));
   body.append(el('div', 'name', t.title), meta);
 
   // A Downvote only counts once the Voter has given the Title a real try (a Sample), so say so.
-  const untried = !t.sampled && !t.inReview && !me.isOwner;
+  const leaving = t.leavingInDays != null;
+  const untried = !t.sampled && !t.inReview && !leaving && !me.isOwner;
   const tryNote = () => el('div', 'note', `Counts once you've watched ${me.sampleMinutes[t.kind]} minutes of it.`);
 
   // Downvote, or Withdraw it again, until the Title is with the Owner.
@@ -76,7 +82,8 @@ function card(t) {
   };
 
   const acts = el('div', 'acts');
-  if (t.inReview) acts.append(el('div', 'state', 'With the Owner for review'));
+  if (leaving) acts.append(el('div', 'state', 'Watch it before it goes'));
+  else if (t.inReview) acts.append(el('div', 'state', 'With the Owner for review'));
   else if (me.isOwner) {
     // the Owner only looks
   } else if (t.downvoted) {
@@ -99,10 +106,13 @@ try {
 } catch {}
 let query = '';
 
-// One tab per Plex library (Movies, TV Shows, Anime…), named as in Plex.
+// The Leaving Soon tab; not a Plex library name, which can't start with a NUL.
+const LEAVING = '\u0000leaving';
+
+// One tab per Plex library (Movies, TV Shows, Anime…), named as in Plex, then Leaving Soon when anything is.
 async function loadTabs() {
-  const { libraries } = await api('/api/libraries');
-  if (!libraries.some(l => l.name === library)) library = '';
+  const [{ libraries }, { leavingSoon }] = await Promise.all([api('/api/libraries'), api('/api/leaving-soon')]);
+  if (!libraries.some(l => l.name === library) && !(library === LEAVING && leavingSoon.length)) library = '';
   const tab = (/** @type {string} */ name, /** @type {string} */ label, /** @type {number} */ n) => {
     const b = el('button', '', label);
     b.type = 'button';
@@ -120,8 +130,14 @@ async function loadTabs() {
     return b;
   };
   const total = libraries.reduce((sum, l) => sum + l.count, 0);
-  $('tabs').replaceChildren(tab('', 'All', total), ...libraries.map(l => tab(l.name, l.name, l.count)));
-  $('tabs').hidden = libraries.length < 2;
+  const tabs = [tab('', 'All', total), ...libraries.map(l => tab(l.name, l.name, l.count))];
+  if (leavingSoon.length) {
+    const leaving = tab(LEAVING, 'Leaving Soon', leavingSoon.length);
+    leaving.classList.add('leaving');
+    tabs.push(leaving);
+  }
+  $('tabs').replaceChildren(...tabs);
+  $('tabs').hidden = tabs.length < 3 && !leavingSoon.length;
 }
 
 let pending = 0;
@@ -130,7 +146,8 @@ async function load() {
   const q = query;
   try {
     const params = new URLSearchParams({ q });
-    if (library) params.set('library', library);
+    if (library === LEAVING) params.set('leaving', '1');
+    else if (library) params.set('library', library);
     const { titles } = await api(`/api/titles?${params}`);
     if (ticket !== pending) return; // a newer search is on its way
     $('titles').replaceChildren(...titles.map(card));

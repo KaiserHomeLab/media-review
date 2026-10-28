@@ -5,7 +5,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { openStore } = require('../lib/store');
 const { DEFAULTS } = require('../lib/rules');
-const { castDownvote, withdrawDownvote, applyWatches, keep, evaluateAll, reviewQueue } = require('../lib/review');
+const {
+  castDownvote,
+  withdrawDownvote,
+  applyWatches,
+  keep,
+  remove,
+  leavingSoon,
+  evaluateAll,
+  reviewQueue,
+} = require('../lib/review');
 
 const NOW = 1_800_000_000;
 const MIN = 60;
@@ -174,4 +183,70 @@ test('Keep on a Title that is not queued, or does not exist, is rejected', () =>
   const t = setup();
   assert.deepEqual(keep(t.store, 'm1', NOW), { ok: false, error: 'not-queued' });
   assert.deepEqual(keep(t.store, 'nope', NOW), { ok: false, error: 'not-queued' });
+});
+
+// ------------------------------------------------------------------ 0004: Remove into Leaving Soon
+
+const DAY = 86400;
+/** A queued m1: three Voters Sampled it, a and b Downvoted. @param {ReturnType<typeof setup>} t */
+const queued = t => {
+  audienceOfThree(t);
+  castDownvote(t.store, DEFAULTS, 'a', 'm1', NOW);
+  castDownvote(t.store, DEFAULTS, 'b', 'm1', NOW);
+};
+
+test('Remove takes a queued Title into Leaving Soon for 14 days, and nothing is deleted', () => {
+  const t = setup();
+  queued(t);
+  assert.deepEqual(remove(t.store, DEFAULTS, 'm1', NOW + 60), { ok: true, endsAt: NOW + 60 + 14 * DAY });
+  assert.deepEqual(reviewQueue(t.store), []);
+  assert.deepEqual(leavingSoon(t.store, NOW + 60 + DAY), [
+    {
+      ratingKey: 'm1',
+      kind: 'movie',
+      name: 'Dull Movie',
+      year: 2020,
+      library: null,
+      removedAt: new Date((NOW + 60) * 1000).toISOString(),
+      endsAt: new Date((NOW + 60 + 14 * DAY) * 1000).toISOString(),
+      daysLeft: 13,
+    },
+  ]);
+  assert.ok(t.store.title('m1'), 'still in the catalogue');
+  assert.deepEqual(remove(t.store, DEFAULTS, 'm1', NOW + 120), { ok: false, error: 'not-queued' });
+});
+
+test('Remove on a Title that is not queued is rejected', () => {
+  const t = setup();
+  assert.deepEqual(remove(t.store, DEFAULTS, 'm1', NOW), { ok: false, error: 'not-queued' });
+});
+
+test('a Leaving Soon Title takes no Downvotes, and its frozen ones are not withdrawn or re-queued', () => {
+  const t = setup();
+  queued(t);
+  remove(t.store, DEFAULTS, 'm1', NOW + 60);
+  assert.deepEqual(castDownvote(t.store, DEFAULTS, 'c', 'm1', NOW + 90), { ok: false, error: 'leaving' });
+  assert.deepEqual(withdrawDownvote(t.store, DEFAULTS, 'a', 'm1', NOW + 90), { ok: false, error: 'leaving' });
+  t.play('a', 'm1', 100 * MIN, true, NOW + 100);
+  assert.deepEqual(applyWatches(t.store), []);
+  assert.deepEqual(evaluateAll(t.store, DEFAULTS, NOW + 200), []);
+  assert.deepEqual(reviewQueue(t.store), []);
+});
+
+test('Keep after all: the Owner Keeps a Leaving Soon Title, which clears its Downvotes', () => {
+  const t = setup();
+  queued(t);
+  remove(t.store, DEFAULTS, 'm1', NOW + 60);
+  assert.deepEqual(keep(t.store, 'm1', NOW + DAY), { ok: true });
+  assert.deepEqual(leavingSoon(t.store, NOW + DAY), []);
+  assert.equal(t.store.downvotesOf('m1').length, 0);
+  assert.deepEqual(keep(t.store, 'm1', NOW + DAY), { ok: false, error: 'not-queued' });
+
+  // Back to normal: it can be Downvoted and queued again, and its history shows the Remove and the Keep.
+  castDownvote(t.store, DEFAULTS, 'a', 'm1', NOW + 2 * DAY);
+  castDownvote(t.store, DEFAULTS, 'b', 'm1', NOW + 2 * DAY);
+  assert.deepEqual(
+    reviewQueue(t.store)[0].history.map(h => h.decision),
+    ['remove', 'keep'],
+  );
 });

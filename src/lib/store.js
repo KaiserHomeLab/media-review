@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS voters (
 CREATE TABLE IF NOT EXISTS titles (
   rating_key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('movie', 'show')),
   title TEXT NOT NULL, year INTEGER, thumb TEXT, seen INTEGER NOT NULL DEFAULT 1, library TEXT,
-  library_pos INTEGER
+  library_pos INTEGER, library_key TEXT
 );
 CREATE TABLE IF NOT EXISTS plays (
   id TEXT PRIMARY KEY, voter_id TEXT NOT NULL, title_key TEXT NOT NULL,
@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS queued_downvotes (
   title_key TEXT NOT NULL, voter_id TEXT NOT NULL, vote_weight REAL NOT NULL, in_audience INTEGER NOT NULL,
   created_at INTEGER NOT NULL, PRIMARY KEY (title_key, voter_id)
 );
+CREATE TABLE IF NOT EXISTS leaving_soon (
+  title_key TEXT PRIMARY KEY, removed_at INTEGER NOT NULL, ends_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS decisions (
   id INTEGER PRIMARY KEY, title_key TEXT NOT NULL, decision TEXT NOT NULL CHECK (decision IN ('keep', 'remove')),
   at INTEGER NOT NULL
@@ -46,7 +49,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 /**
  * @typedef {{ plex_id: string, username: string, thumb: string | null }} VoterRow
  * @typedef {{ rating_key: string, kind: 'movie' | 'show', title: string, year: number | null,
- *   thumb: string | null, library: string | null }} TitleRow
+ *   thumb: string | null, library: string | null, library_key: string | null }} TitleRow
  * @typedef {{ id: string, voter_id: string, title_key: string, started: number, seconds: number,
  *   watched: number }} PlayRow
  */
@@ -67,6 +70,7 @@ function openStore(file) {
   };
   addColumn('titles', 'library', 'TEXT'); // the Plex library: Movies, TV Shows, Anime…
   addColumn('titles', 'library_pos', 'INTEGER'); // its place in Plex's own list of libraries
+  addColumn('titles', 'library_key', 'TEXT'); // the Plex library section id, where collections live
 
   /** @param {() => void} fn */
   const tx = fn => {
@@ -86,10 +90,11 @@ function openStore(file) {
        ON CONFLICT (plex_id) DO UPDATE SET username = excluded.username, thumb = excluded.thumb`,
     ),
     upsertTitle: db.prepare(
-      `INSERT INTO titles (rating_key, kind, title, year, thumb, library, library_pos, seen)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `INSERT INTO titles (rating_key, kind, title, year, thumb, library, library_pos, library_key, seen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
        ON CONFLICT (rating_key) DO UPDATE SET kind = excluded.kind, title = excluded.title, year = excluded.year,
-         thumb = excluded.thumb, library = excluded.library, library_pos = excluded.library_pos, seen = 1`,
+         thumb = excluded.thumb, library = excluded.library, library_pos = excluded.library_pos,
+         library_key = excluded.library_key, seen = 1`,
     ),
     upsertPlay: db.prepare(
       `INSERT INTO plays (id, voter_id, title_key, started, seconds, watched) VALUES (?, ?, ?, ?, ?, ?)
@@ -113,7 +118,7 @@ function openStore(file) {
     // Replace the catalogue: titles no longer in Plex stay (their history matters) but are hidden.
     /**
      * @param {Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year?: number | null,
-     *   thumb?: string | null, library?: string | null }>} list
+     *   thumb?: string | null, library?: string | null, libraryKey?: string | null }>} list
      */
     replaceTitles: list =>
       tx(() => {
@@ -123,9 +128,27 @@ function openStore(file) {
         for (const t of list) {
           if (t.library != null && !pos.has(t.library)) pos.set(t.library, pos.size);
           const p = t.library == null ? null : pos.get(t.library);
-          q.upsertTitle.run(t.ratingKey, t.kind, t.title, t.year ?? null, t.thumb ?? null, t.library ?? null, p);
+          q.upsertTitle.run(
+            t.ratingKey,
+            t.kind,
+            t.title,
+            t.year ?? null,
+            t.thumb ?? null,
+            t.library ?? null,
+            p,
+            t.libraryKey ?? null,
+          );
         }
       }),
+    // Plex library sections that hold Titles: each may need a Leaving Soon collection.
+    /** @returns {Array<{ key: string, kind: 'movie' | 'show' }>} */
+    librarySections: () =>
+      db
+        .prepare(
+          'SELECT library_key AS k, MIN(kind) AS kind FROM titles WHERE seen = 1 AND library_key IS NOT NULL GROUP BY library_key',
+        )
+        .all()
+        .map(r => ({ key: String(r.k), kind: /** @type {'movie' | 'show'} */ (r.kind) })),
     // The Plex libraries Titles are in, in Plex's order, for the Voter's tabs.
     /** @returns {Array<{ name: string, kind: 'movie' | 'show', count: number }>} */
     libraries: () =>
@@ -197,7 +220,8 @@ function openStore(file) {
         .prepare(
           `SELECT d.voter_id, d.title_key FROM downvotes d
            LEFT JOIN review_queue r ON r.title_key = d.title_key
-           WHERE r.title_key IS NULL AND EXISTS (
+           LEFT JOIN leaving_soon l ON l.title_key = d.title_key
+           WHERE r.title_key IS NULL AND l.title_key IS NULL AND EXISTS (
              SELECT 1 FROM plays p WHERE p.voter_id = d.voter_id AND p.title_key = d.title_key
                AND p.watched = 1 AND p.started > d.created_at)`,
         )
@@ -219,13 +243,17 @@ function openStore(file) {
       db
         .prepare(
           `SELECT DISTINCT d.title_key AS k FROM downvotes d
-           LEFT JOIN review_queue r ON r.title_key = d.title_key WHERE r.title_key IS NULL`,
+           LEFT JOIN review_queue r ON r.title_key = d.title_key
+           LEFT JOIN leaving_soon l ON l.title_key = d.title_key
+           WHERE r.title_key IS NULL AND l.title_key IS NULL`,
         )
         .all()
         .map(r => String(r.k)),
 
     /** @param {string} titleKey */
     isQueued: titleKey => !!db.prepare('SELECT 1 FROM review_queue WHERE title_key = ?').get(titleKey),
+    /** @param {string} titleKey */
+    isLeaving: titleKey => !!db.prepare('SELECT 1 FROM leaving_soon WHERE title_key = ?').get(titleKey),
     // Queue a Title and freeze its Downvotes with the Vote Weight each had at that moment.
     /**
      * @param {string} titleKey @param {number} now
@@ -273,10 +301,25 @@ function openStore(file) {
     /** @param {string} titleKey @param {number} now */
     keep: (titleKey, now) =>
       tx(() => {
-        for (const table of ['review_queue', 'queued_downvotes', 'downvotes'])
+        for (const table of ['review_queue', 'queued_downvotes', 'downvotes', 'leaving_soon'])
           db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
         db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'keep', ?)`).run(titleKey, now);
       }),
+    // Remove: the Title leaves the queue for Leaving Soon. Its Downvotes stay, frozen (Objections need them).
+    /** @param {string} titleKey @param {number} now @param {number} endsAt */
+    remove: (titleKey, now, endsAt) =>
+      tx(() => {
+        for (const table of ['review_queue', 'queued_downvotes'])
+          db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
+        db.prepare('INSERT INTO leaving_soon (title_key, removed_at, ends_at) VALUES (?, ?, ?)').run(
+          titleKey,
+          now,
+          endsAt,
+        );
+        db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'remove', ?)`).run(titleKey, now);
+      }),
+    /** @returns {Array<{ title_key: string, removed_at: number, ends_at: number }>} soonest first */
+    leavingSoon: () => /** @type {any} */ (db.prepare('SELECT * FROM leaving_soon ORDER BY ends_at, title_key').all()),
     /** @param {string} titleKey @returns {Array<{ decision: 'keep' | 'remove', at: number }>} */
     decisionsOf: titleKey =>
       /** @type {any} */ (

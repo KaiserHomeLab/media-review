@@ -57,7 +57,12 @@ Every request sends the key as `X-Api-Key`.
 
 - `GET /api/v1/status`: `{ app: "media-review", version }`
 - `GET /api/v1/review-queue`: `{ reviewQueue: [...] }`, one entry per Title waiting for the Owner, with each Downvote's Voter and Vote Weight
+- `POST /api/v1/review-queue/:ratingKey/keep` and `…/remove`: the Owner's decision. Remove answers `{ removed: true, endsAt }`
+- `GET /api/v1/leaving-soon`: `{ leavingSoon: [...] }`, each with `endsAt` and `daysLeft`
+- `POST /api/v1/leaving-soon/:ratingKey/keep`: Keep after all
 - `GET /api/v1/poster/:ratingKey`: the Title's poster
+
+The Owner's own pages use the same routes under `/api/owner/` with their session instead of the key.
 
 ## Development
 

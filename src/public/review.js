@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// The Owner's page: the Review Queue with its decisions, and the optional API key for Media Ops.
+// The Owner's page: the Review Queue and Leaving Soon with their decisions, and the optional API key for Media Ops.
 // The same decisions can be made in Media Ops; both go to the same place (ADR 0003).
 'use strict';
 
@@ -60,28 +60,93 @@ function entry(e) {
     main.append(el('div', 'line', `Watched it since: ${e.watchedSinceQueued.map(w => w.voter).join(', ')}`));
 
   const acts = el('div', 'acts');
-  const keep = el('button', 'btn small', 'Keep');
-  keep.type = 'button';
-  keep.addEventListener('click', async () => {
-    if (!confirm(`Keep ${e.title.name}? All its Downvotes are cleared, so it starts again from zero.`)) return;
-    keep.disabled = true;
-    fail('');
-    try {
-      await api(`/api/owner/review-queue/${encodeURIComponent(e.title.ratingKey)}/keep`, {
-        method: 'POST',
-        body: '{}',
-      });
-    } catch (err) {
-      // Already decided, perhaps in Media Ops: the reload below shows where it stands.
-      if (err.message !== 'not-queued') fail(err.message);
-    }
-    loadQueue();
-  });
-  acts.append(keep);
+  acts.append(
+    decide(
+      e.title,
+      'review-queue',
+      'keep',
+      'Keep',
+      `Keep ${e.title.name}? All its Downvotes are cleared, so it starts again from zero.`,
+    ),
+    decide(
+      e.title,
+      'review-queue',
+      'remove',
+      'Remove',
+      `Remove ${e.title.name}? It goes to Leaving Soon for 14 days, pinned in Plex for everyone, and only then is it deleted.`,
+      'btn small danger',
+    ),
+  );
 
   li.append(img, main, acts);
   return li;
 }
+
+// A decision button: Keep or Remove in the queue, or Keep after all while Leaving Soon.
+/**
+ * @param {{ ratingKey: string, name: string }} title @param {'review-queue' | 'leaving-soon'} list
+ * @param {'keep' | 'remove'} what @param {string} label @param {string} question @param {string} [cls]
+ */
+function decide(title, list, what, label, question, cls = 'btn small') {
+  const b = el('button', cls, label);
+  b.type = 'button';
+  b.addEventListener('click', async () => {
+    if (!confirm(question)) return;
+    b.disabled = true;
+    fail('');
+    try {
+      await api(`/api/owner/${list}/${encodeURIComponent(title.ratingKey)}/${what}`, { method: 'POST', body: '{}' });
+    } catch (err) {
+      // Already decided, perhaps in Media Ops: the reload below shows where it stands.
+      if (err.message !== 'not-queued' && err.message !== 'not-leaving') fail(err.message);
+    }
+    loadAll();
+  });
+  return b;
+}
+
+/** @param {number} days */
+const leavingText = days => (days <= 0 ? 'leaves today' : days === 1 ? 'leaves tomorrow' : `leaves in ${days} days`);
+
+// One Leaving Soon Title: when it goes, and Keep after all.
+function leavingEntry(l) {
+  const li = el('li', 'entry');
+  const img = el('img', 'poster');
+  Object.assign(img, { src: `/poster/${encodeURIComponent(l.ratingKey)}`, alt: '' });
+  const main = el('div', 'main');
+  const head = el('div', 'head');
+  head.append(el('b', '', l.name));
+  if (l.year) head.append(el('span', 'muted', ` (${l.year})`));
+  const chips = el('div', 'meta');
+  chips.append(el('span', 'chip', l.library ?? (l.kind === 'show' ? 'Show' : 'Movie')));
+  chips.append(el('span', 'chip review', leavingText(l.daysLeft)));
+  main.append(
+    head,
+    chips,
+    el('div', 'line', `Removed ${ago(l.removedAt)} · deleted on ${new Date(l.endsAt).toLocaleDateString()}`),
+  );
+  const acts = el('div', 'acts');
+  acts.append(
+    decide(
+      { ratingKey: l.ratingKey, name: l.name },
+      'leaving-soon',
+      'keep',
+      'Keep after all',
+      `Keep ${l.name} after all? It leaves Leaving Soon and the Plex collection, and its Downvotes are cleared.`,
+    ),
+  );
+  li.append(img, main, acts);
+  return li;
+}
+
+async function loadLeaving() {
+  const { leavingSoon } = await api('/api/owner/leaving-soon');
+  $('leaving-count').textContent = leavingSoon.length ? `${leavingSoon.length} leaving` : 'nothing leaving';
+  $('leaving').replaceChildren(...leavingSoon.map(leavingEntry));
+  if (!leavingSoon.length) $('leaving').append(el('li', 'empty', 'Nothing is Leaving Soon.'));
+}
+
+const loadAll = () => Promise.all([loadQueue(), loadLeaving()]);
 
 async function loadQueue() {
   const { reviewQueue } = await api('/api/owner/review-queue');
@@ -109,11 +174,12 @@ $('generate').addEventListener('click', async () => {
   }
 });
 
-Promise.all([loadQueue(), api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey))])
+Promise.all([loadAll(), api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey))])
   .then(() => {
     $('queue-card').hidden = false;
+    $('leaving-card').hidden = false;
     $('key-card').hidden = false;
   })
   .catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));
 // Keep it current while it's open, e.g. after a decision made in Media Ops.
-setInterval(() => loadQueue().catch(() => {}), 60000);
+setInterval(() => loadAll().catch(() => {}), 60000);
