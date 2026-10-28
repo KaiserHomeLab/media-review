@@ -3,7 +3,7 @@
 //
 // Pull Voters, Titles and play history in, then re-check every Title with Downvotes.
 'use strict';
-const { evaluateAll } = require('./review');
+const { applyWatches, evaluateAll } = require('./review');
 
 const DAY = 86400;
 
@@ -34,6 +34,9 @@ async function sync({ store, plex, tautulli, settings, now, log }) {
       log(`sync: ${name} failed: ${e.message}`);
     }
   }
+  // A Watch after a Downvote withdraws it, before the threshold is checked again.
+  for (const w of applyWatches(store))
+    log(`Downvote withdrawn by a Watch: ${store.title(w.titleKey)?.title ?? w.titleKey}`);
   const queued = evaluateAll(store, settings, now());
   for (const key of queued) log(`Review Queue: added ${store.title(key)?.title ?? key}`);
   return queued;

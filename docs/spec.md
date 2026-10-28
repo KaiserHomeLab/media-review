@@ -73,11 +73,18 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
   - the Voter can withdraw their own Downvote.
   - a Watch of the Title by the Voter after their Downvote withdraws it.
 - Once the Title is queued, its Downvotes are frozen. A later Watch by a downvoter is shown to the Owner but withdraws nothing.
+- Confirmed by the Owner:
+  - A Watch is one full episode, so finishing any episode of a show after Downvoting it withdraws the Downvote.
+  - A Watch only withdraws a Downvote if it started after the Downvote was cast.
+  - A Downvote withdrawn by a Watch disappears silently: the Voter isn't messaged.
+  - The Owner is shown only finished Watches since queuing, not Samples.
 
 ### Keep
 
 - Clears all of the Title's Downvotes, so it starts again from zero.
 - Removes the Title from the Review Queue.
+- Confirmed by the Owner: there is no cooldown. Voters can Downvote a Kept Title again straight away, and it can return to the Review Queue as soon as it reaches the threshold again. Earlier Keeps show in its history.
+- Voters aren't messaged about a Keep. Their Downvote just goes away.
 
 ### Remove and Leaving Soon
 

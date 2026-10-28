@@ -74,6 +74,33 @@ function castDownvote(store, s, voterId, titleKey, now) {
   return { ok: true, queued: evaluate(store, s, titleKey, now) };
 }
 
+/**
+ * @param {Store} store @param {Settings} s @param {string} voterId @param {string} titleKey @param {number} now
+ * @returns {{ ok: true } | { ok: false, error: 'not-downvoted' | 'queued' }}
+ */
+function withdrawDownvote(store, s, voterId, titleKey, now) {
+  if (store.isQueued(titleKey)) return { ok: false, error: 'queued' };
+  if (!store.removeDownvote(voterId, titleKey)) return { ok: false, error: 'not-downvoted' };
+  evaluate(store, s, titleKey, now);
+  return { ok: true };
+}
+
+// A Watch of the Title after a Downvote withdraws it, until the Title is queued. Run after each sync.
+/** @param {Store} store @returns {Array<{ voterId: string, titleKey: string }>} the withdrawn Downvotes */
+function applyWatches(store) {
+  const watched = store.downvotesWatchedSince();
+  for (const d of watched) store.removeDownvote(d.voterId, d.titleKey);
+  return watched;
+}
+
+// The Owner's Keep, from Media Ops.
+/** @param {Store} store @param {string} titleKey @param {number} now @returns {{ ok: true } | { ok: false, error: 'not-queued' }} */
+function keep(store, titleKey, now) {
+  if (!store.isQueued(titleKey)) return { ok: false, error: 'not-queued' };
+  store.keep(titleKey, now);
+  return { ok: true };
+}
+
 // Which Titles one Voter has Sampled: their Downvote only counts on those (Q5), and they're told so.
 /** @param {Store} store @param {Settings} s @param {string} voterId */
 function sampledBy(store, s, voterId) {
@@ -106,16 +133,19 @@ function reviewQueue(store) {
         inAudience: !!d.in_audience,
         at: new Date(d.created_at * 1000).toISOString(),
       })),
-      // Filled in by later tickets: Watches by downvoters after queuing (0002), sent back by Objections (0006),
-      // and earlier Keep/Remove decisions (0003, 0004).
-      watchedSinceQueued: [],
-      sentBack: false,
-      history: [],
+      // Frozen Downvotes stay, but the Owner sees who has watched the Title since.
+      watchedSinceQueued: store
+        .watchedSinceQueued(r.title_key)
+        .map(w => ({ voter: w.username ?? w.voter_id, at: iso(w.at) })),
+      sentBack: false, // set by Objections (0006)
+      history: store.decisionsOf(r.title_key).map(d => ({ decision: d.decision, at: iso(d.at) })),
     };
   });
 }
 
+/** @param {number} t unix seconds */
+const iso = t => new Date(t * 1000).toISOString();
 /** @param {number} n */
 const round = n => Math.round(n * 100) / 100;
 
-module.exports = { evaluate, evaluateAll, castDownvote, sampledBy, reviewQueue };
+module.exports = { evaluate, evaluateAll, castDownvote, withdrawDownvote, applyWatches, keep, sampledBy, reviewQueue };
