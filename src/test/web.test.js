@@ -29,7 +29,8 @@ const fakePlex = /** @type {any} */ ({
   poster: async () => new Response('img', { headers: { 'content-type': 'image/jpeg' } }),
 });
 
-async function setup() {
+/** @param {{ publicUrl?: string }} [extra] */
+async function setup(extra = {}) {
   const store = openStore(':memory:');
   store.replaceTitles([
     { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', year: 2020, thumb: '/library/m1/thumb' },
@@ -42,6 +43,7 @@ async function setup() {
     now: () => NOW,
     log: () => {},
     publicDir: path.join(__dirname, '..', 'public'),
+    ...extra,
   });
   const server = http.createServer(app);
   await new Promise(r => server.listen(0, '127.0.0.1', () => r(null)));
@@ -213,4 +215,20 @@ test('a Voter who has not Sampled a Title is told their Downvote will not count 
 
   store.upsertPlays([{ id: 'p', voterId: 'a', titleKey: 'm1', started: NOW - 60, seconds: 30 * 60, watched: false }]);
   assert.equal((await title()).sampled, true);
+});
+
+test('with PUBLIC_URL, sign-in returns to the public address and cookies are Secure', async () => {
+  const { req, signIn } = await setup({ publicUrl: 'https://review.example.com/' });
+  const res = await req('/auth/plex');
+  assert.match(String(res.headers.get('location')), /forwardUrl=https:\/\/review\.example\.com\/auth\/plex\/callback$/);
+  assert.match(String(res.headers.getSetCookie()[0]), /; Secure$/);
+  const r = await signIn(2);
+  assert.match(r.cookie, /^mr_session=/);
+});
+
+test('/healthz answers without a session', async () => {
+  const { req } = await setup();
+  const res = await req('/healthz');
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), 'ok');
 });

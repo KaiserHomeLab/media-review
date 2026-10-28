@@ -29,9 +29,10 @@ const TYPES = /** @type {Record<string, string>} */ ({
 /**
  * @param {{ store: import('./store').Store, plex: ReturnType<typeof import('./plex').plex>,
  *   machineId: () => Promise<string>, settings: import('./rules').Settings, now: () => number,
- *   log: (msg: string) => void, publicDir: string }} ctx
+ *   log: (msg: string) => void, publicDir: string, publicUrl?: string }} ctx
  */
-function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
+function createApp({ store, plex, machineId, settings, now, log, publicDir, publicUrl }) {
+  const fixedBase = publicUrl ? publicUrl.replace(/\/+$/, '') : null;
   /** @param {Res} res @param {number} status @param {unknown} body */
   const json = (res, status, body) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
@@ -53,7 +54,7 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
         .map(([k, v]) => [k, decodeURIComponent(v)]),
     );
   /** @param {Req} req */
-  const secure = req => req.headers['x-forwarded-proto'] === 'https';
+  const secure = req => (fixedBase ? fixedBase.startsWith('https:') : req.headers['x-forwarded-proto'] === 'https');
   /** @param {Req} req @param {string} name @param {string} value @param {number} maxAge seconds */
   const cookie = (req, name, value, maxAge) =>
     `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure(req) ? '; Secure' : ''}`;
@@ -74,7 +75,10 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
   };
 
   /** @param {Req} req */
-  const baseUrl = req => `${secure(req) ? 'https' : 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
+  // Where Plex sends the Voter back after sign-in: PUBLIC_URL when set (e.g. behind a Cloudflare Tunnel), else
+  // what the reverse proxy or browser says.
+  const baseUrl = req =>
+    fixedBase ?? `${secure(req) ? 'https' : 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
 
   // ------------------------------------------------------------------ sign in with Plex
   /** @param {Req} req @param {Res} res */
@@ -110,6 +114,11 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
     const p = url.pathname;
     const m = req.method;
 
+    // Liveness, for Docker's health check. Says nothing about Plex or Tautulli.
+    if (m === 'GET' && p === '/healthz') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      return res.end('ok');
+    }
     if (m === 'GET' && p === '/auth/plex') return signInStart(req, res);
     if (m === 'GET' && p === '/auth/plex/callback') return signInCallback(req, res);
 
