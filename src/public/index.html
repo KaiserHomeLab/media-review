@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Review</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>Media Review</h1>
+      <span class="who" id="who"></span>
+      <a class="button" id="owner-link" href="owner.html" hidden>API key</a>
+      <button id="logout" hidden>Sign out</button>
+    </header>
+
+    <section class="signin" id="signin" hidden>
+      <h2>Tell the Owner what's no longer wanted</h2>
+      <p>
+        Downvote a movie or show you think should leave the library. Nothing is removed automatically: once enough
+        of the people who've tried a title agree, the Owner takes a look.
+      </p>
+      <p class="notice error" id="signin-error" hidden></p>
+      <a class="button primary" href="/auth/plex">Sign in with Plex</a>
+    </section>
+
+    <main id="app" hidden>
+      <p class="notice" id="owner-note" hidden>
+        You're the Owner, so you decide in Media Ops rather than Downvoting. This is what your Voters see.
+      </p>
+      <p class="notice error" id="error" hidden></p>
+      <input type="search" id="search" placeholder="Search movies and shows" aria-label="Search movies and shows" />
+      <ul class="grid" id="titles"></ul>
+      <p class="muted" id="empty" hidden>No titles match.</p>
+    </main>
+  </body>
+</html>

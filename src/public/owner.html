@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Review: API key</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="owner.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1><a href="/">Media Review</a></h1>
+    </header>
+    <main>
+      <p class="notice error" id="error" hidden></p>
+      <section class="panel" id="panel" hidden>
+        <h2>API key for Media Ops</h2>
+        <p class="muted">
+          In Media Ops, open Settings → Add app → Media Review, and enter this server's address and this key.
+          Making a new key stops the old one working straight away.
+        </p>
+        <div class="key" id="key">No key yet.</div>
+        <button class="primary" id="generate">Generate a new key</button>
+      </section>
+    </main>
+  </body>
+</html>
