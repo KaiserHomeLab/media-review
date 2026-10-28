@@ -2,7 +2,7 @@
 
 **Blocked by:** 0001
 
-**Status:** Media Review side built. Media Ops buttons in a Media Ops PR. The Plex collection calls follow Plex Web's own API and are tested against a fake Plex; they still need checking against the real server (ticket 0012).
+**Status:** Media Review side built. Media Ops buttons in KaiserHomeLab/media-ops#46. The Plex collection calls follow Plex Web's own API and are tested against a fake Plex; they still need checking against the real server (ticket 0012).
 
 ## What to build
 
