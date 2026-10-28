@@ -214,3 +214,41 @@ test('a Voter who has not Sampled a Title is told their Downvote will not count 
   store.upsertPlays([{ id: 'p', voterId: 'a', titleKey: 'm1', started: NOW - 60, seconds: 30 * 60, watched: false }]);
   assert.equal((await title()).sampled, true);
 });
+
+test('a Voter withdraws a Downvote from the web app until the Title is queued', async () => {
+  const { signIn, post } = await setup();
+  const alice = (await signIn(2)).cookie;
+  await post(alice, '/api/titles/m1/downvote');
+  assert.equal((await post(alice, '/api/titles/m1/withdraw')).status, 200);
+  const again = await post(alice, '/api/titles/m1/withdraw');
+  assert.equal(again.status, 409);
+  assert.deepEqual(await again.json(), { error: 'not-downvoted' });
+});
+
+test('Media Ops Keeps a queued Title with the API key', async () => {
+  const { signIn, req, post, store } = await setup();
+  const owner = (await signIn(1)).cookie;
+  const voters = [(await signIn(2)).cookie, (await signIn(3)).cookie, (await signIn(5)).cookie];
+  store.upsertPlays(
+    ['a', 'b', 'c'].map((v, i) => ({
+      id: String(i),
+      voterId: v,
+      titleKey: 'm1',
+      started: NOW - 60,
+      seconds: 3600,
+      watched: true,
+    })),
+  );
+  await post(voters[0], '/api/titles/m1/downvote');
+  await post(voters[1], '/api/titles/m1/downvote');
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+  const keepIt = (/** @type {Record<string, string>} */ headers) =>
+    req('/api/v1/review-queue/m1/keep', { method: 'POST', headers });
+
+  assert.equal((await keepIt({})).status, 401);
+  assert.deepEqual(await (await keepIt({ 'x-api-key': apiKey })).json(), { kept: true });
+  assert.deepEqual(await (await keepIt({ 'x-api-key': apiKey })).json(), { error: 'not-queued' });
+  // Back to zero: the Voters can Downvote it again.
+  assert.equal((await (await req('/api/titles', { cookie: voters[0] })).json()).titles[0].downvoted, false);
+  assert.equal((await post(voters[0], '/api/titles/m1/downvote')).status, 201);
+});

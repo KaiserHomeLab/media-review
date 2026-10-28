@@ -15,6 +15,7 @@ const ERRORS = {
   'already-downvoted': 'You already Downvoted this.',
   queued: 'This is already with the Owner for review.',
   'unknown-title': 'That title is no longer in the library.',
+  'not-downvoted': "You hadn't Downvoted this.",
 };
 
 async function api(path, opts = {}) {
@@ -56,29 +57,40 @@ function card(t) {
     return note;
   };
 
-  if (t.inReview || t.downvoted || me.isOwner) {
-    const state = document.createElement('div');
-    state.className = 'state';
-    state.textContent = t.inReview ? 'With the Owner for review' : t.downvoted ? 'You Downvoted this' : '';
-    body.append(state);
-    if (t.downvoted && untried) body.append(tryNote());
-  } else {
+  // Downvote, or Withdraw it again, until the Title is with the Owner.
+  const action = (/** @type {'downvote' | 'withdraw'} */ what) => {
     const btn = document.createElement('button');
-    btn.textContent = 'Downvote';
+    btn.textContent = what === 'downvote' ? 'Downvote' : 'Withdraw';
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       showError('');
       try {
-        await api(`/api/titles/${encodeURIComponent(t.ratingKey)}/downvote`, { method: 'POST', body: '{}' });
-        t.downvoted = true;
+        await api(`/api/titles/${encodeURIComponent(t.ratingKey)}/${what}`, { method: 'POST', body: '{}' });
+        t.downvoted = what === 'downvote';
       } catch (e) {
         showError(ERRORS[e.message] ?? e.message);
         if (e.message === 'queued') t.inReview = true;
         if (e.message === 'already-downvoted') t.downvoted = true;
+        if (e.message === 'not-downvoted') t.downvoted = false;
       }
       li.replaceWith(card(t));
     });
-    body.append(btn);
+    return btn;
+  };
+
+  if (t.inReview || me.isOwner) {
+    const state = document.createElement('div');
+    state.className = 'state';
+    state.textContent = t.inReview ? 'With the Owner for review' : '';
+    body.append(state);
+  } else if (t.downvoted) {
+    const state = document.createElement('div');
+    state.className = 'state';
+    state.textContent = 'You Downvoted this';
+    body.append(state, action('withdraw'));
+    if (untried) body.append(tryNote());
+  } else {
+    body.append(action('downvote'));
     if (untried) body.append(tryNote());
   }
   li.append(img, body);

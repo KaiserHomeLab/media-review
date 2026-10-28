@@ -98,3 +98,19 @@ test('sync pulls Voters, Titles and plays, keeps going past a failing step, and 
   assert.ok(logs.some(l => l.includes('Review Queue: added Dull Movie')));
   assert.equal(store.title('500')?.title, 'Dull Movie'); // the earlier catalogue is kept
 });
+
+test('sync withdraws a Downvote when the Voter has a Watch of the Title afterwards', async () => {
+  const store = openStore(':memory:');
+  const logs = /** @type {string[]} */ ([]);
+  store.replaceTitles([{ ratingKey: '500', kind: 'movie', title: 'Dull Movie' }]);
+  store.upsertVoter({ plexId: '2', username: 'u2' });
+  store.addDownvote('2', '500', NOW - 1000);
+  const history = {
+    data: [row({ id: 1, user_id: 2, media_type: 'movie', rating_key: 500, play_duration: 6000, watched_status: 1 })],
+  };
+  const t = tautulli({ url: 'http://t', apiKey: 'k', fetch: fakeFetch({ get_users: [], get_history: history }) });
+  const plex = /** @type {any} */ ({ titles: async () => [{ ratingKey: '500', kind: 'movie', title: 'Dull Movie' }] });
+  await sync({ store, plex, tautulli: t, settings: DEFAULTS, now: () => NOW, log: m => logs.push(m) });
+  assert.equal(store.downvotesOf('500').length, 0);
+  assert.ok(logs.includes('Downvote withdrawn by a Watch: Dull Movie'));
+});

@@ -2,6 +2,8 @@
 
 **Blocked by:** 0001
 
+**Status:** Done. Media Ops shows the Watches in the same PR as 0003's Keep button.
+
 ## What to build
 
 - A Voter can withdraw their own Downvote from the web app until the Title reaches the Review Queue.
@@ -10,9 +12,9 @@
 
 ## Acceptance criteria
 
-- [ ] Withdrawing re-runs the threshold check.
-- [ ] Withdrawing is refused once the Title is queued.
-- [ ] A Watch after the Downvote withdraws it before queuing.
-- [ ] A Sample that isn't a Watch does not withdraw it.
-- [ ] A Watch before the Downvote does not withdraw it.
-- [ ] After queuing, a downvoter's Watch shows on the Media Ops card, and the Downvote count is unchanged.
+- [x] Withdrawing re-runs the threshold check.
+- [x] Withdrawing is refused once the Title is queued.
+- [x] A Watch after the Downvote withdraws it before queuing.
+- [x] A Sample that isn't a Watch does not withdraw it.
+- [x] A Watch before the Downvote does not withdraw it.
+- [x] After queuing, a downvoter's Watch shows on the Media Ops card, and the Downvote count is unchanged.

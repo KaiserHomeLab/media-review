@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS queued_downvotes (
   title_key TEXT NOT NULL, voter_id TEXT NOT NULL, vote_weight REAL NOT NULL, in_audience INTEGER NOT NULL,
   created_at INTEGER NOT NULL, PRIMARY KEY (title_key, voter_id)
 );
+CREATE TABLE IF NOT EXISTS decisions (
+  id INTEGER PRIMARY KEY, title_key TEXT NOT NULL, decision TEXT NOT NULL CHECK (decision IN ('keep', 'remove')),
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS decisions_title ON decisions (title_key);
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY, plex_id TEXT NOT NULL, is_owner INTEGER NOT NULL, created_at INTEGER NOT NULL
 );
@@ -148,6 +153,22 @@ function openStore(file) {
       db
         .prepare('INSERT INTO downvotes (voter_id, title_key, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
         .run(voterId, titleKey, now).changes === 1,
+    /** @param {string} voterId @param {string} titleKey @returns {boolean} false if there was none */
+    removeDownvote: (voterId, titleKey) =>
+      db.prepare('DELETE FROM downvotes WHERE voter_id = ? AND title_key = ?').run(voterId, titleKey).changes === 1,
+    // Downvotes on Titles not yet queued whose Voter has since had a Watch of the Title.
+    /** @returns {Array<{ voterId: string, titleKey: string }>} */
+    downvotesWatchedSince: () =>
+      db
+        .prepare(
+          `SELECT d.voter_id, d.title_key FROM downvotes d
+           LEFT JOIN review_queue r ON r.title_key = d.title_key
+           WHERE r.title_key IS NULL AND EXISTS (
+             SELECT 1 FROM plays p WHERE p.voter_id = d.voter_id AND p.title_key = d.title_key
+               AND p.watched = 1 AND p.started > d.created_at)`,
+        )
+        .all()
+        .map(r => ({ voterId: String(r.voter_id), titleKey: String(r.title_key) })),
     /** @param {string} titleKey @returns {Array<{ voter_id: string, created_at: number }>} */
     downvotesOf: titleKey =>
       /** @type {any} */ (db.prepare('SELECT voter_id, created_at FROM downvotes WHERE title_key = ?').all(titleKey)),
@@ -199,6 +220,34 @@ function openStore(file) {
            LEFT JOIN voters v ON v.plex_id = q.voter_id WHERE q.title_key = ? ORDER BY q.vote_weight DESC`,
         )
         .all(titleKey),
+
+    // Watches of a queued Title by its downvoters since it was queued: the latest one each.
+    /** @param {string} titleKey @returns {any[]} */
+    watchedSinceQueued: titleKey =>
+      db
+        .prepare(
+          `SELECT q.voter_id, v.username, MAX(p.started) AS at FROM queued_downvotes q
+           JOIN review_queue r ON r.title_key = q.title_key
+           JOIN plays p ON p.voter_id = q.voter_id AND p.title_key = q.title_key AND p.watched = 1
+             AND p.started >= r.queued_at
+           LEFT JOIN voters v ON v.plex_id = q.voter_id
+           WHERE q.title_key = ? GROUP BY q.voter_id ORDER BY at`,
+        )
+        .all(titleKey),
+
+    // Keep: the Title leaves the queue and starts again from zero Downvotes.
+    /** @param {string} titleKey @param {number} now */
+    keep: (titleKey, now) =>
+      tx(() => {
+        for (const table of ['review_queue', 'queued_downvotes', 'downvotes'])
+          db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
+        db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'keep', ?)`).run(titleKey, now);
+      }),
+    /** @param {string} titleKey @returns {Array<{ decision: 'keep' | 'remove', at: number }>} */
+    decisionsOf: titleKey =>
+      /** @type {any} */ (
+        db.prepare('SELECT decision, at FROM decisions WHERE title_key = ? ORDER BY at').all(titleKey)
+      ),
 
     /** @param {string} token @param {string} plexId @param {boolean} isOwner @param {number} now */
     addSession: (token, plexId, isOwner, now) =>
