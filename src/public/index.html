@@ -1,38 +1,54 @@
 <!doctype html>
+<!-- SPDX-License-Identifier: MIT · Copyright (c) 2026 KaiserHomeLab · Media Review: the Voter's page, filled in by app.js. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Media Review</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23e5a00d'/><path d='M9 12h14l-7 10z' fill='%231a1a19'/></svg>" />
+    <meta name="theme-color" content="#121211" />
+    <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="style.css" />
     <script src="app.js" defer></script>
   </head>
   <body>
-    <header>
-      <h1>Media Review</h1>
-      <span class="who" id="who"></span>
-      <a class="button" id="owner-link" href="owner.html" hidden>API key</a>
-      <button id="logout" hidden>Sign out</button>
+    <header class="top">
+      <a class="brand" href="/">
+        <span class="logo" aria-hidden="true"></span>
+        <div>
+          <h1>Media Review</h1>
+          <div class="sub" id="who">not signed in</div>
+        </div>
+      </a>
+      <div class="top-right">
+        <a class="btn small" id="owner-link" href="owner.html" hidden>⚿ <span class="hide-sm">API key</span></a>
+        <button class="btn small ghost" type="button" id="logout" hidden>Sign out</button>
+      </div>
     </header>
 
-    <section class="signin" id="signin" hidden>
-      <h2>Tell the Owner what's no longer wanted</h2>
-      <p>
-        Downvote a movie or show you think should leave the library. Nothing is removed automatically: once enough
-        of the people who've tried a title agree, the Owner takes a look.
-      </p>
-      <p class="notice error" id="signin-error" hidden></p>
-      <a class="button primary" href="/auth/plex">Sign in with Plex</a>
-    </section>
+    <main>
+      <section class="card signin" id="signin" hidden>
+        <span class="logo" aria-hidden="true"></span>
+        <h2>Tell the Owner what's no longer wanted</h2>
+        <p>
+          Downvote a movie or show you think should leave the library. Nothing is removed automatically: once enough
+          of the people who've tried a title agree, the Owner takes a look.
+        </p>
+        <p class="notice error" id="signin-error" hidden></p>
+        <a class="btn primary" href="/auth/plex">Sign in with Plex</a>
+      </section>
 
-    <main id="app" hidden>
       <p class="notice" id="owner-note" hidden>
         You're the Owner, so you decide in Media Ops rather than Downvoting. This is what your Voters see.
       </p>
       <p class="notice error" id="error" hidden></p>
-      <input type="search" id="search" placeholder="Search movies and shows" aria-label="Search movies and shows" />
-      <ul class="grid" id="titles"></ul>
-      <p class="muted" id="empty" hidden>No titles match.</p>
+
+      <section class="card" id="app" hidden>
+        <h2>Library <span class="count" id="count"></span></h2>
+        <input class="search" type="search" id="search" placeholder="Search movies and shows" aria-label="Search movies and shows" />
+        <ul class="tiles" id="titles"></ul>
+        <p class="empty" id="empty" hidden>No titles match.</p>
+      </section>
     </main>
   </body>
 </html>
