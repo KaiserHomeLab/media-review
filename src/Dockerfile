@@ -7,7 +7,7 @@
 # Build from the top of the repo (it needs LICENSE from there): docker build -f src/Dockerfile .
 
 # Pinned to an exact build (the digest), the same one Media Ops uses.
-FROM ghcr.io/linuxserver/baseimage-alpine:3.24@sha256:f68ac194f40cfe528e5e9549a22623bf4effbfaf93fad834909d2d6c2abd3096
+FROM ghcr.io/linuxserver/baseimage-alpine:3.24@sha256:52106d187a66ccb92e3289cb6dd25c549cb0b6b7bfec38a51994434c96db2d35
 
 # set version label
 ARG BUILD_DATE
