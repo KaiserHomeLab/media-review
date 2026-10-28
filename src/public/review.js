@@ -123,8 +123,14 @@ function leavingEntry(l) {
   main.append(
     head,
     chips,
-    el('div', 'line', `Removed ${ago(l.removedAt)} · deleted on ${new Date(l.endsAt).toLocaleDateString()}`),
+    el(
+      'div',
+      'line',
+      `Removed ${ago(l.removedAt)} · deleted overnight on ${new Date(l.endsAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`,
+    ),
   );
+  // Overnight deletion didn't happen: say why. It's tried again the next night.
+  if (l.deleteError) main.append(el('div', 'line problem', `Couldn't delete: ${l.deleteError}. Tried again tonight.`));
   const acts = el('div', 'acts');
   acts.append(
     decide(

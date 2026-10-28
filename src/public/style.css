@@ -458,6 +458,9 @@ h2 .count {
   font-size: 13px;
   color: var(--text-muted);
 }
+.queue .line.problem {
+  color: var(--critical);
+}
 .queue .acts {
   display: flex;
   gap: 6px;

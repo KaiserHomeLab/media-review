@@ -40,6 +40,10 @@ npm start
 | `PLEX_TOKEN` | yes | The Owner's Plex token, for reading the libraries and posters |
 | `TAUTULLI_URL` | yes | Tautulli, for play history |
 | `TAUTULLI_API_KEY` | yes | Tautulli → Settings → Web Interface → API |
+| `RADARR_URL`, `RADARR_API_KEY` | no | Radarr, for deleting movies once their Leaving Soon is over |
+| `SONARR_URL`, `SONARR_API_KEY` | no | Sonarr, for deleting shows |
+| `SONARR_ANIME_URL`, `SONARR_ANIME_API_KEY` | no | A second Sonarr, for anime. A show is deleted from whichever Sonarr has it |
+| `TZ` | no | The server's time zone, which decides when "overnight" is: deletions run 04:00–07:00 |
 | `PUBLIC_URL` | no | The address friends open, e.g. `https://review.example.com`. Sign-in returns there, and cookies are Secure when it's https |
 | `PORT` | no | Default `8485` (Media Ops uses 8484) |
 | `DATA_DIR` | no | Where the SQLite file lives. Default `src/data` |

@@ -8,7 +8,8 @@
 /**
  * @typedef {'movie' | 'show'} Kind
  * @typedef {{ sampleMovieMinutes: number, sampleShowMinutes: number, minimumAudience: number,
- *   downvoteShare: number, baseWeightDays: number, titleBonus: number, leavingSoonDays: number }} Settings
+ *   downvoteShare: number, baseWeightDays: number, titleBonus: number, leavingSoonDays: number,
+ *   deleteHour: number }} Settings
  * @typedef {{ seconds: number, watched: boolean }} Play
  * @typedef {{ id: string, baseWeight: number, sampled: boolean }} Voter
  */
@@ -22,6 +23,7 @@ const DEFAULTS = {
   baseWeightDays: 90,
   titleBonus: 2,
   leavingSoonDays: 14,
+  deleteHour: 4, // overnight, server time: Leaving Soon ends then, and deletions run then
 };
 
 // A Sample: play time on the Title adds up to the Sample length for its kind, or any play is a Watch.
@@ -55,4 +57,20 @@ function checkThreshold(voters, downvoters, s) {
   return { audience: audience.length, audienceWeight, downvoteWeight, reached };
 }
 
-module.exports = { DEFAULTS, hasSampled, baseWeights, voteWeight, checkThreshold };
+// Deletions happen overnight. Leaving Soon ends at the first `hour`:00, server time, at or after `t`.
+/** @param {number} t unix seconds @param {number} hour 0-23 @returns {number} unix seconds */
+function quietTime(t, hour) {
+  const d = new Date(t * 1000);
+  const q = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour);
+  if (q.getTime() < d.getTime()) q.setDate(q.getDate() + 1);
+  return Math.floor(q.getTime() / 1000);
+}
+
+// Deletions run only in the three hours from `hour`:00. A missed night waits for the next one.
+/** @param {number} t unix seconds @param {number} hour */
+const inQuietWindow = (t, hour) => {
+  const h = new Date(t * 1000).getHours();
+  return h >= hour && h < hour + 3;
+};
+
+module.exports = { DEFAULTS, hasSampled, baseWeights, voteWeight, checkThreshold, quietTime, inQuietWindow };

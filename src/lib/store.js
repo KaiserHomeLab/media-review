@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS voters (
 CREATE TABLE IF NOT EXISTS titles (
   rating_key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('movie', 'show')),
   title TEXT NOT NULL, year INTEGER, thumb TEXT, seen INTEGER NOT NULL DEFAULT 1, library TEXT,
-  library_pos INTEGER, library_key TEXT
+  library_pos INTEGER, library_key TEXT, tmdb_id TEXT, tvdb_id TEXT
 );
 CREATE TABLE IF NOT EXISTS plays (
   id TEXT PRIMARY KEY, voter_id TEXT NOT NULL, title_key TEXT NOT NULL,
@@ -33,7 +33,11 @@ CREATE TABLE IF NOT EXISTS queued_downvotes (
   created_at INTEGER NOT NULL, PRIMARY KEY (title_key, voter_id)
 );
 CREATE TABLE IF NOT EXISTS leaving_soon (
-  title_key TEXT PRIMARY KEY, removed_at INTEGER NOT NULL, ends_at INTEGER NOT NULL
+  title_key TEXT PRIMARY KEY, removed_at INTEGER NOT NULL, ends_at INTEGER NOT NULL,
+  delete_error TEXT, deleted_from TEXT
+);
+CREATE TABLE IF NOT EXISTS deletions (
+  title_key TEXT NOT NULL, at INTEGER NOT NULL, deleted_from TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS decisions (
   id INTEGER PRIMARY KEY, title_key TEXT NOT NULL, decision TEXT NOT NULL CHECK (decision IN ('keep', 'remove')),
@@ -49,7 +53,8 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 /**
  * @typedef {{ plex_id: string, username: string, thumb: string | null }} VoterRow
  * @typedef {{ rating_key: string, kind: 'movie' | 'show', title: string, year: number | null,
- *   thumb: string | null, library: string | null, library_key: string | null }} TitleRow
+ *   thumb: string | null, library: string | null, library_key: string | null,
+ *   tmdb_id: string | null, tvdb_id: string | null }} TitleRow
  * @typedef {{ id: string, voter_id: string, title_key: string, started: number, seconds: number,
  *   watched: number }} PlayRow
  */
@@ -71,6 +76,10 @@ function openStore(file) {
   addColumn('titles', 'library', 'TEXT'); // the Plex library: Movies, TV Shows, Anime…
   addColumn('titles', 'library_pos', 'INTEGER'); // its place in Plex's own list of libraries
   addColumn('titles', 'library_key', 'TEXT'); // the Plex library section id, where collections live
+  addColumn('titles', 'tmdb_id', 'TEXT'); // how Radarr knows a movie
+  addColumn('titles', 'tvdb_id', 'TEXT'); // how Sonarr knows a show
+  addColumn('leaving_soon', 'delete_error', 'TEXT'); // why the last try to delete it failed
+  addColumn('leaving_soon', 'deleted_from', 'TEXT'); // apps it's already gone from, if a try half-worked
 
   /** @param {() => void} fn */
   const tx = fn => {
@@ -90,11 +99,11 @@ function openStore(file) {
        ON CONFLICT (plex_id) DO UPDATE SET username = excluded.username, thumb = excluded.thumb`,
     ),
     upsertTitle: db.prepare(
-      `INSERT INTO titles (rating_key, kind, title, year, thumb, library, library_pos, library_key, seen)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `INSERT INTO titles (rating_key, kind, title, year, thumb, library, library_pos, library_key, tmdb_id, tvdb_id, seen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
        ON CONFLICT (rating_key) DO UPDATE SET kind = excluded.kind, title = excluded.title, year = excluded.year,
          thumb = excluded.thumb, library = excluded.library, library_pos = excluded.library_pos,
-         library_key = excluded.library_key, seen = 1`,
+         library_key = excluded.library_key, tmdb_id = excluded.tmdb_id, tvdb_id = excluded.tvdb_id, seen = 1`,
     ),
     upsertPlay: db.prepare(
       `INSERT INTO plays (id, voter_id, title_key, started, seconds, watched) VALUES (?, ?, ?, ?, ?, ?)
@@ -118,7 +127,8 @@ function openStore(file) {
     // Replace the catalogue: titles no longer in Plex stay (their history matters) but are hidden.
     /**
      * @param {Array<{ ratingKey: string, kind: 'movie' | 'show', title: string, year?: number | null,
-     *   thumb?: string | null, library?: string | null, libraryKey?: string | null }>} list
+     *   thumb?: string | null, library?: string | null, libraryKey?: string | null,
+     *   tmdbId?: string | null, tvdbId?: string | null }>} list
      */
     replaceTitles: list =>
       tx(() => {
@@ -137,6 +147,8 @@ function openStore(file) {
             t.library ?? null,
             p,
             t.libraryKey ?? null,
+            t.tmdbId ?? null,
+            t.tvdbId ?? null,
           );
         }
       }),
@@ -318,8 +330,35 @@ function openStore(file) {
         );
         db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'remove', ?)`).run(titleKey, now);
       }),
-    /** @returns {Array<{ title_key: string, removed_at: number, ends_at: number }>} soonest first */
+    /**
+     * @returns {Array<{ title_key: string, removed_at: number, ends_at: number, delete_error: string | null,
+     *   deleted_from: string | null }>} soonest first
+     */
     leavingSoon: () => /** @type {any} */ (db.prepare('SELECT * FROM leaving_soon ORDER BY ends_at, title_key').all()),
+    // A try to delete it didn't finish: why, and the apps it is already gone from (comma-separated).
+    /** @param {string} titleKey @param {string} error @param {string[]} deletedFrom */
+    deleteFailed: (titleKey, error, deletedFrom) =>
+      void db
+        .prepare('UPDATE leaving_soon SET delete_error = ?, deleted_from = ? WHERE title_key = ?')
+        .run(error, deletedFrom.join(',') || null, titleKey),
+    // Deleted: it leaves Leaving Soon and the catalogue. Its decisions stay as its history.
+    /** @param {string} titleKey @param {number} now @param {string[]} deletedFrom */
+    deleted: (titleKey, now, deletedFrom) =>
+      tx(() => {
+        for (const table of ['leaving_soon', 'downvotes'])
+          db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
+        db.prepare('INSERT INTO deletions (title_key, at, deleted_from) VALUES (?, ?, ?)').run(
+          titleKey,
+          now,
+          deletedFrom.join(','),
+        );
+        db.prepare('UPDATE titles SET seen = 0 WHERE rating_key = ?').run(titleKey);
+      }),
+    /** @param {string} titleKey @returns {Array<{ at: number, deleted_from: string }>} */
+    deletionsOf: titleKey =>
+      /** @type {any} */ (
+        db.prepare('SELECT at, deleted_from FROM deletions WHERE title_key = ? ORDER BY at').all(titleKey)
+      ),
     /** @param {string} titleKey @returns {Array<{ decision: 'keep' | 'remove', at: number }>} */
     decisionsOf: titleKey =>
       /** @type {any} */ (

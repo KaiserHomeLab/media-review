@@ -252,7 +252,8 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir, publ
   /** @param {Res} res @param {string | undefined} m @param {string} sub the path after the prefix @param {string} via */
   function decisions(res, m, sub, via) {
     if (m === 'GET' && sub === '/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
-    if (m === 'GET' && sub === '/leaving-soon') return json(res, 200, { leavingSoon: leavingSoon(store, now()) });
+    if (m === 'GET' && sub === '/leaving-soon')
+      return json(res, 200, { leavingSoon: leavingSoon(store, now(), { owner: true }) });
     const d = sub.match(/^\/(review-queue|leaving-soon)\/([^/]+)\/(keep|remove)$/);
     if (m !== 'POST' || !d || (d[1] === 'leaving-soon' && d[3] !== 'keep')) return null;
     const key = decodeURIComponent(d[2]);

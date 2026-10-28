@@ -98,6 +98,11 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 - No new Downvotes are taken on a Title that is Leaving Soon.
 - **Keep after all:** the Owner can Keep a Title while it is Leaving Soon, in Media Review or Media Ops (confirmed by the Owner). It is an ordinary Keep: the Title leaves Leaving Soon and the collection, and its Downvotes are cleared.
 - When Leaving Soon ends with no successful Objection, Media Review deletes the Title through Radarr (movie) or Sonarr (show), including its files. It also removes the Title from the Leaving Soon collection.
+  - The Owner runs one Radarr and two Sonarrs, one for TV and one for anime. A Title is found in them by the IDs Plex has for it (TMDB for movies, TVDB for shows), and every copy found is deleted.
+  - Each deletion also adds an import-list exclusion, so lists don't download it again (confirmed by the Owner).
+  - Deletion happens overnight: Leaving Soon ends at the first 04:00 (server time) after its length, and deletions run only between 04:00 and 07:00. A night that was missed waits for the next one (confirmed by the Owner).
+  - A Title in neither Radarr nor Sonarr is not deleted. It stays Leaving Soon and the Owner is shown why (confirmed by the Owner).
+  - A failed deletion leaves the Title Leaving Soon, shows the Owner the error, and is tried again the next night. A Title is marked deleted only once it has been.
 
 ### Objection
 
