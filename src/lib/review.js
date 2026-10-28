@@ -120,6 +120,7 @@ function reviewQueue(store) {
         kind: t?.kind,
         name: t?.title,
         year: t?.year ?? null,
+        library: t?.library ?? null,
         // Relative to Media Review's address, with the same API key.
         poster: t?.thumb ? `/api/v1/poster/${encodeURIComponent(r.title_key)}` : null,
       },

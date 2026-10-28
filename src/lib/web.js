@@ -167,15 +167,19 @@ function createApp({ store, plex, machineId, settings, now, log, publicDir }) {
       return res.end();
     }
 
+    if (m === 'GET' && p === '/api/libraries') return json(res, 200, { libraries: store.libraries() });
+
     if (m === 'GET' && p === '/api/titles') {
       const mine = store.downvotedBy(s.plexId);
       const sampled = sampledBy(store, settings, s.plexId);
       const q = (url.searchParams.get('q') ?? '').slice(0, 100);
-      const titles = store.searchTitles(q, 60).map(t => ({
+      const library = url.searchParams.get('library') || undefined;
+      const titles = store.searchTitles(q, 60, library).map(t => ({
         ratingKey: t.rating_key,
         kind: t.kind,
         title: t.title,
         year: t.year,
+        library: t.library,
         poster: t.thumb ? `/poster/${encodeURIComponent(t.rating_key)}` : null,
         downvoted: mine.has(t.rating_key), // a Voter sees only their own Downvotes
         sampled: sampled(t), // their Downvote only counts once this is true

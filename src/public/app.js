@@ -41,7 +41,7 @@ function card(t) {
   if (t.poster) Object.assign(img, { src: t.poster, alt: '', loading: 'lazy' });
   const body = el('div', 'body');
   const meta = el('div', 'meta');
-  meta.append(el('span', 'chip', t.kind === 'movie' ? 'Movie' : 'Show'));
+  meta.append(el('span', 'chip', t.library ?? (t.kind === 'movie' ? 'Movie' : 'Show')));
   if (t.year) meta.append(el('span', 'chip', String(t.year)));
   if (t.inReview) meta.append(el('span', 'chip review', 'In review'));
   body.append(el('div', 'name', t.title), meta);
@@ -91,11 +91,47 @@ function card(t) {
   return li;
 }
 
+// The library tab ('' is All), remembered in this browser only.
+const TAB_KEY = 'media-review:library';
+let library = '';
+try {
+  library = localStorage.getItem(TAB_KEY) ?? '';
+} catch {}
+let query = '';
+
+// One tab per Plex library (Movies, TV Shows, Anime…), named as in Plex.
+async function loadTabs() {
+  const { libraries } = await api('/api/libraries');
+  if (!libraries.some(l => l.name === library)) library = '';
+  const tab = (/** @type {string} */ name, /** @type {string} */ label, /** @type {number} */ n) => {
+    const b = el('button', '', label);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(name === library));
+    b.append(el('span', 'n', String(n)));
+    b.addEventListener('click', () => {
+      library = name;
+      try {
+        localStorage.setItem(TAB_KEY, name);
+      } catch {}
+      for (const x of $('tabs').children) x.setAttribute('aria-selected', String(x === b));
+      load();
+    });
+    return b;
+  };
+  const total = libraries.reduce((sum, l) => sum + l.count, 0);
+  $('tabs').replaceChildren(tab('', 'All', total), ...libraries.map(l => tab(l.name, l.name, l.count)));
+  $('tabs').hidden = libraries.length < 2;
+}
+
 let pending = 0;
-async function load(q) {
+async function load() {
   const ticket = ++pending;
+  const q = query;
   try {
-    const { titles } = await api(`/api/titles?q=${encodeURIComponent(q)}`);
+    const params = new URLSearchParams({ q });
+    if (library) params.set('library', library);
+    const { titles } = await api(`/api/titles?${params}`);
     if (ticket !== pending) return; // a newer search is on its way
     $('titles').replaceChildren(...titles.map(card));
     $('empty').hidden = titles.length > 0;
@@ -126,9 +162,13 @@ async function start() {
   let timer;
   $('search').addEventListener('input', e => {
     clearTimeout(timer);
-    timer = setTimeout(() => load(/** @type {HTMLInputElement} */ (e.target).value), 200);
+    timer = setTimeout(() => {
+      query = /** @type {HTMLInputElement} */ (e.target).value;
+      load();
+    }, 200);
   });
-  load('');
+  await loadTabs().catch(e => showError(e.message));
+  load();
 }
 
 $('logout').addEventListener('click', async () => {

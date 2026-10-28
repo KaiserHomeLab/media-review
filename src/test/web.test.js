@@ -252,3 +252,30 @@ test('Media Ops Keeps a queued Title with the API key', async () => {
   assert.equal((await (await req('/api/titles', { cookie: voters[0] })).json()).titles[0].downvoted, false);
   assert.equal((await post(voters[0], '/api/titles/m1/downvote')).status, 201);
 });
+
+test('Titles are grouped by their Plex library, so Voters can browse Movies, TV Shows and Anime apart', async () => {
+  const { signIn, req, store } = await setup();
+  store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', library: 'Movies' },
+    { ratingKey: 's1', kind: 'show', title: 'Slow Show', library: 'TV Shows' },
+    { ratingKey: 'a1', kind: 'show', title: 'Loud Anime', library: 'Anime' },
+    { ratingKey: 'a2', kind: 'show', title: 'Another Anime', library: 'Anime' },
+  ]);
+  const alice = (await signIn(2)).cookie;
+  const get = async (/** @type {string} */ p) => (await req(p, { cookie: alice })).json();
+
+  assert.deepEqual((await get('/api/libraries')).libraries, [
+    { name: 'Movies', kind: 'movie', count: 1 },
+    { name: 'TV Shows', kind: 'show', count: 1 },
+    { name: 'Anime', kind: 'show', count: 2 },
+  ]);
+  const anime = (await get('/api/titles?library=Anime')).titles;
+  assert.deepEqual(
+    anime.map((/** @type {any} */ t) => [t.title, t.library]),
+    [
+      ['Another Anime', 'Anime'],
+      ['Loud Anime', 'Anime'],
+    ],
+  );
+  assert.equal((await get('/api/titles')).titles.length, 4);
+});

@@ -263,6 +263,32 @@ h2 .count {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
+/* Library tabs: Media Ops' segmented control. */
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.seg button {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.seg button[aria-selected='true'] {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+.seg .n {
+  font: 11px var(--mono);
+  color: var(--text-muted);
+  margin-left: 4px;
+}
 .search {
   font: 14px var(--sans);
   color: var(--text-primary);
