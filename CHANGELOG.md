@@ -8,6 +8,10 @@ number, a fix the last one.
 
 ### Added
 
+- **Building up** on the Review Queue page: every title with Downvotes that hasn't reached the bar
+  yet, closest first. Each shows how close it is, who Downvoted it and how much each counts, with
+  "not tried yet" for anyone who hasn't watched it. **Keep now** clears its Downvotes; **Remove now**
+  sends it to Leaving Soon without waiting for the bar.
 - Friends' pages keep themselves current: Your Problem Reports and Your asks to bring back refresh
   every minute, and when the tab comes back into view. A notice says when the Owner has just answered
   one. Finished ones can be cleared from your own list, one at a time or with **Clear finished**.

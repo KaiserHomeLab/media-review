@@ -226,6 +226,84 @@ function leavingSoon(store, now, opts = {}) {
   });
 }
 
+// Building up: every Title with Downvotes that hasn't reached the Review Queue, for the Owner. How close each is
+// (weight so far against what the bar needs, and the Audience against the Minimum Audience), and who Downvoted,
+// with the weight each would carry now; one who hasn't tried it yet carries none. Closest to the bar first.
+/** @param {Store} store @param {Settings} s @param {number} now */
+function buildingUp(store, s, now) {
+  const bases = currentBaseWeights(store, s, now);
+  const list = store.pendingTitles().flatMap(key => {
+    const t = store.title(key);
+    if (!t) return [];
+    const downs = store.downvotesOf(key);
+    const voters = votersOf(
+      store,
+      s,
+      t,
+      bases,
+      downs.map(d => d.voter_id),
+    );
+    const byId = new Map(voters.map(v => [v.id, v]));
+    const r = checkThreshold(voters, new Set(downs.map(d => d.voter_id)), s);
+    const needed = s.downvoteShare * r.audienceWeight;
+    // 1 means it's at the bar: the weight part and the Audience part each count for half.
+    const progress =
+      (Math.min(1, needed > 0 ? r.downvoteWeight / needed : 0) + Math.min(1, r.audience / s.minimumAudience)) / 2;
+    return [
+      {
+        title: {
+          ratingKey: key,
+          kind: t.kind,
+          name: t.title,
+          year: t.year ?? null,
+          library: t.library ?? null,
+          poster: t.thumb ? `/api/v1/poster/${encodeURIComponent(key)}` : null,
+        },
+        downvoteWeight: round(r.downvoteWeight),
+        neededWeight: round(needed),
+        audience: r.audience,
+        minimumAudience: s.minimumAudience,
+        progress: round(progress),
+        downvotes: downs
+          .map(d => {
+            const v = byId.get(d.voter_id);
+            return {
+              voter: store.voter(d.voter_id)?.username ?? d.voter_id,
+              // what it adds to the bar now: nothing until they've tried it (it isn't in the Audience)
+              voteWeight: round(v?.sampled ? voteWeight(v.baseWeight, true, s) : 0),
+              counts: !!v?.sampled, // tried it, so it counts toward the bar
+              at: iso(d.created_at),
+            };
+          })
+          .sort((a, b) => b.voteWeight - a.voteWeight),
+        firstAt: iso(Math.min(...downs.map(d => d.created_at))),
+      },
+    ];
+  });
+  return list.sort((a, b) => b.progress - a.progress || b.downvotes.length - a.downvotes.length);
+}
+
+// The Owner decides before the bar: Keep clears its Downvotes (as Keep in the queue does); Remove sends it to
+// Leaving Soon, with its Downvotes kept as its history (it passes through the queue on the way).
+/** @param {Store} store @param {string} titleKey @param {number} now */
+function keepEarly(store, titleKey, now) {
+  if (!store.pendingTitles().includes(titleKey)) return { ok: false, error: 'not-building-up' };
+  store.keep(titleKey, now);
+  return { ok: true };
+}
+/**
+ * @param {Store} store @param {Settings} s @param {string} titleKey @param {number} now
+ * @returns {{ ok: true, endsAt: number } | { ok: false, error: string }}
+ */
+function removeEarly(store, s, titleKey, now) {
+  const t = store.title(titleKey);
+  if (!t || !store.pendingTitles().includes(titleKey)) return { ok: false, error: 'not-building-up' };
+  const downvoters = store.downvotesOf(titleKey).map(d => d.voter_id);
+  const voters = votersOf(store, s, t, currentBaseWeights(store, s, now), downvoters);
+  enqueue(store, s, t, now, voters, checkThreshold(voters, new Set(downvoters), s));
+  return remove(store, s, titleKey, now);
+}
+
 // Which Titles one Voter has Sampled: their Downvote only counts on those (Q5), and they're told so.
 /** @param {Store} store @param {Settings} s @param {string} voterId */
 function sampledBy(store, s, voterId) {
@@ -280,6 +358,9 @@ const iso = t => new Date(t * 1000).toISOString();
 const round = n => Math.round(n * 100) / 100;
 
 module.exports = {
+  buildingUp,
+  keepEarly,
+  removeEarly,
   object,
   withdrawObjection,
   remove,

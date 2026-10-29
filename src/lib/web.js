@@ -19,6 +19,9 @@ const {
   sampledBy,
   reviewQueue,
   evaluateAll,
+  buildingUp,
+  keepEarly,
+  removeEarly,
 } = require('./review');
 const problems = require('./problems');
 const holdback = require('./holdback');
@@ -687,8 +690,23 @@ function createApp({
   // decision behaves the same wherever it's made (ADR 0003):
   //   GET  /review-queue                 POST /review-queue/:key/keep    POST /review-queue/:key/remove
   //   GET  /leaving-soon                 POST /leaving-soon/:key/keep    (Keep after all)
+  //   GET  /building-up                  POST /building-up/:key/keep     POST /building-up/:key/remove
   /** @param {Res} res @param {string | undefined} m @param {string} sub the path after the prefix @param {string} via */
   function decisions(res, m, sub, via) {
+    // Building up: Titles with Downvotes below the bar, and the Owner deciding before it's reached.
+    if (m === 'GET' && sub === '/building-up')
+      return json(res, 200, { buildingUp: buildingUp(store, settings, now()) });
+    const early = sub.match(/^\/building-up\/([^/]+)\/(keep|remove)$/);
+    if (m === 'POST' && early) {
+      const key = decodeURIComponent(early[1]);
+      const name = store.title(key)?.title ?? key;
+      const r = early[2] === 'keep' ? keepEarly(store, key, now()) : removeEarly(store, settings, key, now());
+      if (!r.ok) return json(res, 409, { error: r.error });
+      log(`${early[2] === 'keep' ? 'Keep' : 'Remove'} before the bar (${via}): ${name}`);
+      if (early[2] === 'keep') return json(res, 200, { kept: true });
+      leavingChanged();
+      return json(res, 200, { removed: true, endsAt: new Date(/** @type {any} */ (r).endsAt * 1000).toISOString() });
+    }
     if (m === 'GET' && sub === '/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
     if (m === 'GET' && sub === '/leaving-soon')
       return json(res, 200, { leavingSoon: leavingSoon(store, now(), { owner: true, settings }) });
