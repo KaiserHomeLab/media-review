@@ -58,6 +58,8 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - Write: Keep, Remove, and resolve or close a Problem Report.
 - Media Ops is a public project. The integration is optional there and holds no downvote rules: it only displays what the API returns and sends decisions back.
 
+**Building up** (confirmed by the Owner): the Owner also sees every Title with Downvotes below the bar, on the Review Queue page and, as a short list, in Media Ops. Each entry shows how close it is (the weight so far against the weight needed, and the Audience against the Minimum Audience) and who Downvoted, with the weight each adds now. A Voter who hasn't tried the Title yet is marked "not tried yet" and adds nothing. The list is closest-first. The Owner can **Keep now**, which clears its Downvotes like Keep in the queue, or **Remove now**, which sends it to Leaving Soon with its Downvotes kept as history. Voters never see this list.
+
 A Review Queue entry includes: the Title, its Audience size, the Downvote weight against the Audience's total Vote Weight, each Downvote with its Voter and Vote Weight, any Watch by a downvoter after the Title was queued, whether it came back through Objections, and its Keep/Remove history.
 
 ## Domain rules

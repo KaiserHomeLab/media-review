@@ -73,6 +73,8 @@ Every request sends the key as `X-Api-Key`.
 - `POST /api/v1/review-queue/:ratingKey/keep` and `…/remove`: the Owner's decision. Remove answers `{ removed: true, endsAt }`
 - `GET /api/v1/leaving-soon`: `{ leavingSoon: [...] }`, each with `endsAt` and `daysLeft`
 - `POST /api/v1/leaving-soon/:ratingKey/keep`: Keep after all
+- `GET /api/v1/building-up`: `{ buildingUp: [...] }`, the Titles with Downvotes that haven't reached the bar yet, closest first. Each has its weight so far, the weight needed, the Audience against the Minimum Audience, `progress` (0–1), and each Downvote with its Voter, the weight it adds now, and whether it counts yet
+- `POST /api/v1/building-up/:ratingKey/keep` and `…/remove`: the Owner deciding before the bar. Keep clears its Downvotes; Remove sends it to Leaving Soon
 - `GET /api/v1/problem-reports`: `{ problemReports: [...] }`, the open Problem Reports, oldest first, each with its Title, the part (`"S2 E3 · Title"`, `"Season 2"`, or `null` for the whole Title), the reason, and every reporter with their note
 - `POST /api/v1/problem-reports/:id/resolve` and `…/close`: the Owner's decision, with an optional `{ "note": "…" }` the reporters see
 - `GET /api/v1/held-back`: `{ heldBack: [...] }`, deleted Titles blocklisted in Seerr, the ones friends asked for first, each with who asked and the Title's history

@@ -30,6 +30,7 @@
   --critical: #d03b3b;
   --info: #4a90e2; /* Problem Reports */
   --held: #9b7fe6; /* held back: deleted, blocked in Seerr */
+  --building: #2bb3a3; /* Downvoted, not at the bar yet */
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -47,6 +48,7 @@
     --on-accent: #fff;
     --info: #1f62b8;
     --held: #6a4fc0;
+    --building: #12796e;
   }
 }
 
@@ -885,6 +887,22 @@ code {
 }
 .kind-held {
   --kind: var(--held);
+}
+.kind-building {
+  --kind: var(--building);
+}
+/* How close a Title is to the bar. */
+.bar-mini {
+  height: 5px;
+  max-width: 260px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.bar-mini i {
+  display: block;
+  height: 100%;
+  background: var(--kind, var(--accent));
 }
 .card[class*='kind-'] {
   border-top: 3px solid var(--kind);

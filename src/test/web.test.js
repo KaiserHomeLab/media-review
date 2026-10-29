@@ -689,3 +689,22 @@ test("a friend clears finished reports and answered asks from their own list; op
   assert.deepEqual(await (await post(alice, '/api/asks/dismiss-finished')).json(), { cleared: 1 });
   assert.deepEqual((await (await req('/api/asks', { cookie: alice })).json()).asks, []);
 });
+
+test('Building up: the Owner and Media Ops see it and can Keep or Remove now; Voters cannot', async () => {
+  const { store, req, signIn, post } = await setup();
+  const [owner, alice] = await Promise.all([1, 2].map(async pin => (await signIn(pin)).cookie));
+  await post(alice, '/api/titles/m1/downvote');
+  assert.equal((await req('/api/owner/building-up', { cookie: alice })).status, 403);
+  const [entry] = (await (await req('/api/owner/building-up', { cookie: owner })).json()).buildingUp;
+  assert.deepEqual(
+    [entry.title.name, entry.downvotes.map((/** @type {any} */ d) => d.voter)],
+    ['Dull Movie', ['alice']],
+  );
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+  const key = { 'x-api-key': apiKey };
+  assert.equal((await (await req('/api/v1/building-up', { headers: key })).json()).buildingUp.length, 1);
+  const removed = await (await req('/api/v1/building-up/m1/remove', { method: 'POST', headers: key })).json();
+  assert.equal(removed.removed, true);
+  assert.ok(store.isLeaving('m1'));
+  assert.deepEqual(await (await post(owner, '/api/owner/building-up/m1/keep')).json(), { error: 'not-building-up' });
+});

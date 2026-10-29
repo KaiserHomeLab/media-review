@@ -90,7 +90,7 @@ function entry(e) {
 
 // A decision button: Keep or Remove in the queue, or Keep after all while Leaving Soon.
 /**
- * @param {{ ratingKey: string, name: string }} title @param {'review-queue' | 'leaving-soon'} list
+ * @param {{ ratingKey: string, name: string }} title @param {'review-queue' | 'leaving-soon' | 'building-up'} list
  * @param {'keep' | 'remove'} what @param {string} label @param {string} question @param {string} [cls]
  */
 function decide(title, list, what, label, question, cls = 'btn small') {
@@ -104,7 +104,7 @@ function decide(title, list, what, label, question, cls = 'btn small') {
       await api(`/api/owner/${list}/${encodeURIComponent(title.ratingKey)}/${what}`, { method: 'POST', body: '{}' });
     } catch (err) {
       // Already decided, perhaps in Media Ops: the reload below shows where it stands.
-      if (err.message !== 'not-queued' && err.message !== 'not-leaving') fail(err.message);
+      if (!['not-queued', 'not-leaving', 'not-building-up'].includes(err.message)) fail(err.message);
     }
     loadAll();
   });
@@ -210,6 +210,69 @@ function problemEntry(r) {
   }
   li.append(img, main, acts);
   return li;
+}
+
+// One Title building up: how close it is to the bar, who Downvoted (and who hasn't tried it yet), and Keep now
+// or Remove now.
+function buildingEntry(b) {
+  const li = el('li', 'entry');
+  const img = el(b.title.poster ? 'img' : 'div', 'poster');
+  if (b.title.poster) Object.assign(img, { src: `/poster/${encodeURIComponent(b.title.ratingKey)}`, alt: '' });
+  const main = el('div', 'main');
+  const head = el('div', 'head');
+  head.append(el('b', '', b.title.name ?? b.title.ratingKey));
+  if (b.title.year) head.append(el('span', 'muted', ` (${b.title.year})`));
+  const chips = el('div', 'meta');
+  chips.append(el('span', 'chip', b.title.library ?? (b.title.kind === 'show' ? 'Show' : 'Movie')));
+  chips.append(el('span', 'chip kind', `▽ ${b.downvotes.length} Downvote${b.downvotes.length === 1 ? '' : 's'}`));
+  const bar = el('div', 'bar-mini');
+  const fill = el('i', '');
+  fill.style.width = `${Math.round(b.progress * 100)}%`;
+  bar.append(fill);
+  bar.title = `${Math.round(b.progress * 100)}% of the way to the Review Queue`;
+  const short = b.audience < b.minimumAudience;
+  main.append(
+    head,
+    chips,
+    bar,
+    el(
+      'div',
+      'line',
+      `${num(b.downvoteWeight)} of ${num(b.neededWeight)} weight needed · ${b.audience} of ${b.minimumAudience} have tried it${short ? ' (too few yet)' : ''} · first ${ago(b.firstAt)}`,
+    ),
+    el(
+      'div',
+      'line',
+      `Downvoted by ${b.downvotes.map(d => (d.counts ? `${d.voter} (${num(d.voteWeight)})` : `${d.voter} (not tried yet)`)).join(', ')}`,
+    ),
+  );
+  const acts = el('div', 'acts');
+  acts.append(
+    decide(
+      b.title,
+      'building-up',
+      'keep',
+      'Keep now',
+      `Keep ${b.title.name}? Its Downvotes are cleared, so it starts again from zero.`,
+    ),
+    decide(
+      b.title,
+      'building-up',
+      'remove',
+      'Remove now',
+      `Remove ${b.title.name} now, before it reaches the bar? It goes to Leaving Soon for ${leavingDays} days, pinned in Plex for everyone, and only then is it deleted.`,
+      'btn small danger',
+    ),
+  );
+  li.append(img, main, acts);
+  return li;
+}
+
+async function loadBuilding() {
+  const { buildingUp } = await api('/api/owner/building-up');
+  $('building-count').textContent = buildingUp.length ? `${buildingUp.length} with Downvotes` : 'none';
+  $('building').replaceChildren(...buildingUp.map(buildingEntry));
+  if (!buildingUp.length) $('building').append(el('li', 'empty', 'Nothing has Downvotes below the bar.'));
 }
 
 async function loadProblems() {
@@ -319,6 +382,7 @@ let leavingDays = 14;
 const loadAll = () =>
   Promise.all([
     loadQueue(),
+    loadBuilding(),
     loadProblems(),
     loadLeaving(),
     loadHeld(),
@@ -337,6 +401,7 @@ async function loadQueue() {
 loadAll()
   .then(() => {
     $('queue-card').hidden = false;
+    $('building-card').hidden = false;
     $('problems-card').hidden = false;
     $('leaving-card').hidden = false;
     $('held-card').hidden = false;
