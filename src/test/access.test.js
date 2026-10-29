@@ -79,8 +79,12 @@ test('a Title already in the Review Queue keeps the Downvotes it was queued with
 
 test('when plex.tv fails, or lists nobody, nobody is signed out', async () => {
   const s = setup();
-  assert.deepEqual(await s.run(new Error('plex.tv answered HTTP 503')), { removed: [], restored: [] });
-  assert.deepEqual(await s.run(new Set()), { removed: [], restored: [] });
+  const failed = await s.run(new Error('plex.tv answered HTTP 503'));
+  assert.deepEqual([failed.removed, failed.restored], [[], []]);
+  assert.match(String(failed.error), /HTTP 503/, 'and the Status card says why');
+  const empty = await s.run(new Set());
+  assert.deepEqual([empty.removed, empty.restored], [[], []]);
+  assert.match(String(empty.error), /listed nobody/);
   assert.ok(s.store.session('tok-a', 0));
   assert.match(s.logs.join('\n'), /couldn't check .* nobody was signed out/);
   assert.match(s.logs.join('\n'), /listed nobody .* nobody was signed out/);

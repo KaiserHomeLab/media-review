@@ -761,3 +761,29 @@ test('Appearance: the Owner sets theme, accent, title and logo; every page is se
   await send(owner, 'DELETE', '/api/owner/appearance/logo', {});
   assert.equal((await req('/branding/logo')).status, 404);
 });
+
+test('Status, Sync now and Diagnostics: Owner only; the report leaves out addresses and names', async () => {
+  const { store, req, signIn, post } = await setup();
+  const [owner, alice] = await Promise.all([1, 2].map(async pin => (await signIn(pin)).cookie));
+  const { jobStatus } = require('../lib/status');
+  jobStatus(store).record('sync', {
+    at: NOW - 120,
+    ok: false,
+    error: "play history: couldn't reach Tautulli (connect ECONNREFUSED 192.168.1.20:8181)",
+    steps: [
+      { name: 'titles', ok: true, error: null, count: 1234 },
+      { name: 'play history', ok: false, error: 'connect ECONNREFUSED 192.168.1.20:8181', count: null },
+    ],
+  });
+  jobStatus(store).record('access', { at: NOW - 100, ok: true, error: null, removed: ['alice'], restored: [] });
+  assert.equal((await req('/api/owner/status', { cookie: alice })).status, 403);
+  const st = await (await req('/api/owner/status', { cookie: owner })).json();
+  assert.deepEqual([st.jobs.sync.ok, st.jobs.sync.steps[0].count, st.now], [false, 1234, NOW]);
+  assert.equal((await post(alice, '/api/owner/diagnostics')).status, 403);
+  const d = await (await post(owner, '/api/owner/diagnostics')).json();
+  assert.ok(Array.isArray(d.checks) && d.checks[0].name === 'Plex');
+  assert.match(d.report, /^Media Review \d+\.\d+\.\d+ · Node v/);
+  assert.match(d.report, /- sync: FAILED: .* 2 min ago \(titles 1234, play history failed\)/);
+  assert.match(d.report, /- access: ok, 2 min ago \(1 signed out, 0 back\)/);
+  assert.doesNotMatch(d.report, /192\.168|alice/, 'no IP addresses, no names');
+});

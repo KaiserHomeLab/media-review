@@ -88,12 +88,12 @@ test('sync pulls Voters, Titles and plays, keeps going past a failing step, and 
     log: (/** @type {string} */ m) => logs.push(m),
   };
 
-  assert.deepEqual(await sync(ctx), []);
+  assert.deepEqual((await sync(ctx)).queued, []);
   store.addDownvote('2', '500', NOW);
   store.addDownvote('3', '500', NOW);
   // Plex is down this time: the play history still syncs and the threshold is still checked.
   ctx.plex = /** @type {any} */ ({ titles: async () => Promise.reject(new Error('Plex answered HTTP 503')) });
-  assert.deepEqual(await sync(ctx), ['500']);
+  assert.deepEqual((await sync(ctx)).queued, ['500']);
   assert.ok(logs.some(l => l.includes('titles failed: Plex answered HTTP 503')));
   assert.ok(logs.some(l => l.includes('Review Queue: added Dull Movie')));
   assert.equal(store.title('500')?.title, 'Dull Movie'); // the earlier catalogue is kept

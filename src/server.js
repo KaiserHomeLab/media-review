@@ -21,6 +21,8 @@ const { rest: discordRest } = require('./lib/discord');
 const notices = require('./lib/notices');
 const { holdBack } = require('./lib/holdback');
 const { checkAccess } = require('./lib/access');
+const { jobStatus } = require('./lib/status');
+const { inQuietWindow } = require('./lib/rules');
 const { runDeletions } = require('./lib/deletions');
 const { botRunner } = require('./lib/bot');
 
@@ -184,6 +186,8 @@ const app = createApp({
   publicDir: path.join(__dirname, 'public'),
   leavingChanged: () => void updateCollections(),
   seerr: () => seerrFrom(apps),
+  jobs: jobStatus(store),
+  syncNow: () => runSync(),
   discordStatus: () => {
     const s = bot.status();
     return s && { ...s, postError };
@@ -204,24 +208,47 @@ const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));
 
 const every = Math.max(1, Number(process.env.SYNC_MINUTES ?? 15)) * 60000;
-let running = false;
-const runSync = async () => {
-  if (running) return;
-  running = true;
+// What each job last did, for Settings → Status.
+const status = jobStatus(store);
+// Each job runs whatever happened to the one before, and records how it went.
+/** @param {string} name @param {() => Promise<Record<string, unknown>>} fn */
+const job = async (name, fn) => {
+  const at = now();
   try {
-    if (!apps.isSetUp()) return; // nothing to sync until Plex is linked
-    await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings, now, log });
-    // Anyone the server is no longer shared with is signed out, and their votes stop counting.
-    await checkAccess({ store, sharedWith: m => plex.sharedWith(m), machineId, now, log });
-    // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up.
-    await runDeletions({ store, arrs: arrsFrom(apps), settings, now, log });
-    await holdBack({ store, seerr: seerrFrom(apps), log });
-    await updateCollections();
-    await checkApps();
-    await runNotices().catch(e => log(`Discord notices failed: ${e.message}`));
-  } finally {
-    running = false;
+    status.record(name, { at, ok: true, error: null, ...(await fn()) });
+  } catch (e) {
+    log(`${name} failed: ${e.message}`);
+    status.record(name, { at, ok: false, error: e.message });
   }
+};
+// One run at a time; asking while one runs (Sync now) waits for that one.
+/** @type {Promise<void> | null} */
+let running = null;
+const runSync = () => (running ??= syncOnce().finally(() => (running = null)));
+const syncOnce = async () => {
+  if (!apps.isSetUp()) return; // nothing to sync until Plex is linked
+  await job('sync', async () => {
+    const r = await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings, now, log });
+    const failed = r.steps.filter(s => !s.ok);
+    return { ok: !failed.length, error: failed.map(s => `${s.name}: ${s.error}`).join('; ') || null, ...r };
+  });
+  // Anyone the server is no longer shared with is signed out, and their votes stop counting.
+  await job('access', async () => {
+    const r = await checkAccess({ store, sharedWith: m => plex.sharedWith(m), machineId, now, log });
+    return { ok: !r.error, ...r };
+  });
+  // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up. The Status
+  // card shows the last night it ran.
+  if (inQuietWindow(now(), settings.deleteHour) || !status.read().deletions)
+    await job('deletions', async () => {
+      const ran = inQuietWindow(now(), settings.deleteHour);
+      const deleted = await runDeletions({ store, arrs: arrsFrom(apps), settings, now, log });
+      return { ran, deleted: deleted.map(k => store.title(k)?.title ?? k) };
+    });
+  await job('holdback', async () => ({ blocked: (await holdBack({ store, seerr: seerrFrom(apps), log })).length }));
+  await job('collections', async () => (await updateCollections(), {}));
+  await job('apps', async () => (await checkApps(), {}));
+  await job('discord', async () => (await runNotices(), {}));
 };
 runSync();
 setInterval(runSync, every).unref();

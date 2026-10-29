@@ -425,6 +425,141 @@ $('rules-save').addEventListener('click', async () => {
   );
 });
 
+// ------------------------------------------------------------------ status and diagnostics
+/** @param {number} at unix seconds @param {number} now */
+const since = (at, now) => {
+  const m = Math.round((now - at) / 60);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 36 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
+};
+/** @param {boolean | null} ok null: not run yet @param {string} label @param {string} text */
+function statusRow(ok, label, text) {
+  const li = el('li', '');
+  li.append(
+    el('span', `dot ${ok == null ? 'wait' : ok ? 'up' : 'down'}`),
+    el('b', '', label),
+    el('span', 'what', text),
+  );
+  return li;
+}
+const STEP = { titles: 'titles from Plex', voters: 'Voters from Tautulli', 'play history': 'plays from Tautulli' };
+/** @param {{ jobs: Record<string, any>, discord: any, now: number }} st */
+function showStatus(st) {
+  const { jobs, now } = st;
+  const rows = [];
+  const s = jobs.sync;
+  rows.push(
+    statusRow(
+      s ? s.ok : null,
+      'Sync',
+      !s
+        ? 'Not run yet.'
+        : `${since(s.at, now)}: ${(s.steps ?? [])
+            .map((/** @type {any} */ x) =>
+              x.ok
+                ? `${Number(x.count ?? 0).toLocaleString()} ${STEP[x.name] ?? x.name}`
+                : `${x.name} failed: ${x.error}`,
+            )
+            .join(' · ')}${s.queued?.length ? ` · ${s.queued.length} reached the Review Queue` : ''}`,
+    ),
+  );
+  const a = jobs.access;
+  rows.push(
+    statusRow(
+      a ? a.ok : null,
+      'Who has access',
+      !a
+        ? 'Not checked yet.'
+        : a.error
+          ? `${since(a.at, now)}: ${a.error}`
+          : `Checked ${since(a.at, now)}: ${a.removed?.length ? `signed out ${a.removed.join(', ')}` : 'everyone still has access'}${a.restored?.length ? `; back: ${a.restored.join(', ')}` : ''}.`,
+    ),
+  );
+  const d = jobs.deletions;
+  rows.push(
+    statusRow(
+      d && d.ran ? d.ok : d && !d.ok ? false : null,
+      'Overnight deletion',
+      !d || !d.ran
+        ? d && !d.ok
+          ? d.error
+          : 'Not run yet: it runs overnight, when something’s Leaving Soon has ended.'
+        : d.ok
+          ? `Last ran ${since(d.at, now)}: ${d.deleted?.length ? `deleted ${d.deleted.join(', ')}` : 'nothing was due'}.`
+          : `${since(d.at, now)}: ${d.error}`,
+    ),
+  );
+  for (const [key, label] of [
+    ['holdback', 'Holding back in Seerr'],
+    ['collections', 'Plex Leaving Soon collection'],
+  ]) {
+    const j = jobs[key];
+    rows.push(
+      statusRow(
+        j ? j.ok : null,
+        label,
+        !j ? 'Not run yet.' : j.ok ? `OK, ${since(j.at, now)}.` : `${since(j.at, now)}: ${j.error}`,
+      ),
+    );
+  }
+  const dc = st.discord;
+  if (dc)
+    rows.push(
+      statusRow(
+        dc.connected && !dc.postError,
+        'Discord',
+        !dc.connected ? (dc.error ?? 'Connecting…') : dc.postError ? `Couldn't post: ${dc.postError}` : 'Connected.',
+      ),
+    );
+  $('status-list').replaceChildren(...rows);
+  $('status-when').textContent = s ? `synced ${since(s.at, now)}` : '';
+  $('status-card').hidden = false;
+}
+async function loadStatus() {
+  showStatus(await api('/api/owner/status'));
+}
+/** @param {string} id @param {() => Promise<void>} fn */
+function busyButton(id, fn) {
+  const b = /** @type {HTMLButtonElement} */ ($(id));
+  b.addEventListener('click', async () => {
+    const label = b.textContent;
+    b.disabled = true;
+    b.textContent = 'Working…';
+    $('status-result').textContent = '';
+    try {
+      await fn();
+    } catch (e) {
+      say($('status-result'), e.message, false);
+    }
+    b.disabled = false;
+    b.textContent = label;
+  });
+}
+busyButton('sync-now', async () => {
+  showStatus(await api('/api/owner/sync', 'POST', {}));
+  say($('status-result'), 'Synced', true);
+});
+busyButton('diag-run', async () => {
+  const { checks, report } = await api('/api/owner/diagnostics', 'POST', {});
+  $('diag-list').replaceChildren(...checks.map(c => statusRow(c.ok, c.name, `${c.detail} (${c.ms} ms)`)));
+  $('diag-report').textContent = report;
+  $('diag').hidden = false;
+});
+$('diag-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('diag-report').textContent ?? '');
+    say($('status-result'), 'Copied', true);
+  } catch {
+    const r = document.createRange();
+    r.selectNodeContents($('diag-report'));
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(r);
+    say($('status-result'), 'Selected: press Ctrl+C', true);
+  }
+});
+
 // ------------------------------------------------------------------ appearance
 // As in Media Ops: theme, accent, title and logo. The page shows a change straight away; Save keeps it.
 let look = null;
@@ -576,7 +711,10 @@ $('generate').addEventListener('click', async () => {
 if (new URLSearchParams(location.search).get('welcome')) $('welcome').hidden = false;
 Promise.all([
   load().then(checkAll),
+  loadStatus(),
   loadLook(),
   loadRules(),
   api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey)),
 ]).catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));
+// Keep Status current while the page is open.
+setInterval(() => document.visibilityState === 'visible' && loadStatus().catch(() => {}), 60000);

@@ -167,6 +167,12 @@ queue, Building up, Problem Reports, asks and Leaving Soon, and you can decide f
 
 ## If something isn't working
 
+**Settings → Status** shows what Media Review last did on its own: the sync with Plex and Tautulli,
+who has access, overnight deletion, holding back in Seerr, the Plex collection and Discord. Each one
+has a green or red dot, and says what went wrong in words. **Sync now** runs it all straight away.
+**Run diagnostics** checks every app live, and **Copy short report** gives you something to paste
+into a GitHub issue, with no keys, tokens, IP addresses or names.
+
 - **A red dot on an app in Settings** comes with what's wrong underneath, in words. It's usually
   the wrong address, a container on another network, or a wrong key. Fix it and press **Test**.
 - **The log** says what each sync and each overnight deletion did:

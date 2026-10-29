@@ -10,21 +10,24 @@
 /**
  * @param {{ store: import('./store').Store, sharedWith: (machineId: string) => Promise<Set<string>>,
  *   machineId: () => Promise<string>, now: () => number, log: (msg: string) => void }} ctx
- * @returns {Promise<{ removed: string[], restored: string[] }>} the Voters' names
+ * @returns {Promise<{ removed: string[], restored: string[], error?: string }>} the Voters' names; error when
+ *   it couldn't be checked
  */
 async function checkAccess({ store, sharedWith, machineId, now, log }) {
   let allowed;
   try {
     allowed = await sharedWith(await machineId());
   } catch (e) {
-    log(`access: couldn't check who the server is shared with (${e.message}); nobody was signed out`);
-    return { removed: [], restored: [] };
+    const error = `couldn't check who the server is shared with (${e.message}); nobody was signed out`;
+    log(`access: ${error}`);
+    return { removed: [], restored: [], error };
   }
   const voters = store.voters();
   // An empty answer while Voters exist is far more likely a plex.tv hiccup than everyone being unshared at once.
   if (!allowed.size && voters.some(v => v.removed_at == null)) {
-    log('access: plex.tv listed nobody the server is shared with; nobody was signed out');
-    return { removed: [], restored: [] };
+    const error = 'plex.tv listed nobody the server is shared with; nobody was signed out';
+    log(`access: ${error}`);
+    return { removed: [], restored: [], error };
   }
   const removed = [];
   const restored = [];
