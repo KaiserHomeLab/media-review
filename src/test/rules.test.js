@@ -169,3 +169,35 @@ test('anime has its own Sample length, picked by Plex library', () => {
   assert.equal(hasSampled('show', twenty, s), true);
   assert.equal(hasSampled('anime', twenty, s), false);
 });
+
+// ------------------------------------------------------------------ 0006: Objections
+const { checkObjections } = require('../lib/rules');
+
+test('Objections send a Title back at exactly the Objection bar, whatever the Audience', () => {
+  const s = { ...DEFAULTS, objectionBar: 2 };
+  // Someone who tried it, with no other watching: 0 + 2 = 2, exactly the bar.
+  assert.deepEqual(checkObjections([{ baseWeight: 0, sampled: true }], s), { weight: 2, reached: true });
+  // Two heavy watchers who never tried it: 0.9 + 0.9 = 1.8, just under.
+  assert.equal(
+    checkObjections(
+      [
+        { baseWeight: 0.9, sampled: false },
+        { baseWeight: 0.9, sampled: false },
+      ],
+      s,
+    ).reached,
+    false,
+  );
+  // No Audience in it at all: the bar is a fixed amount.
+  assert.equal(checkObjections([], s).reached, false);
+  assert.equal(
+    checkObjections(
+      [
+        { baseWeight: 1, sampled: false },
+        { baseWeight: 1, sampled: false },
+      ],
+      s,
+    ).reached,
+    true,
+  );
+});

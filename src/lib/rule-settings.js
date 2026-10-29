@@ -21,6 +21,7 @@ const LIMITS = {
   titleBonus: { min: 0, max: 10, int: false, what: '' },
   leavingSoonDays: { min: 1, max: 90, int: true, what: 'days' },
   deleteHour: { min: 0, max: 23, int: true, what: "o'clock" },
+  objectionBar: { min: 0.5, max: 20, int: false, what: '' },
 };
 
 const KEY = 'rules';

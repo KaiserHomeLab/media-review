@@ -10,7 +10,7 @@
  * @typedef {Kind | 'anime'} SampleKind how long a Sample takes: anime is a show in an anime library
  * @typedef {{ sampleMovieMinutes: number, sampleShowMinutes: number, sampleAnimeMinutes: number,
  *   animeLibraries: string[], minimumAudience: number, downvoteShare: number, baseWeightDays: number,
- *   titleBonus: number, leavingSoonDays: number, deleteHour: number }} Settings
+ *   titleBonus: number, leavingSoonDays: number, deleteHour: number, objectionBar: number }} Settings
  *   animeLibraries: the Plex library section ids the Owner marked as anime
  * @typedef {{ seconds: number, watched: boolean }} Play
  * @typedef {{ id: string, baseWeight: number, sampled: boolean }} Voter
@@ -28,6 +28,7 @@ const DEFAULTS = {
   titleBonus: 2,
   leavingSoonDays: 14,
   deleteHour: 4, // overnight, server time: Leaving Soon ends then, and deletions run then
+  objectionBar: 2, // one friend who tried it can send a Title back (the Owner's choice)
 };
 
 // Which Sample length a Title uses: anime is a show in a library the Owner marked as anime.
@@ -88,8 +89,17 @@ const inQuietWindow = (t, hour) => {
   return h >= hour && h < hour + 3;
 };
 
+// Objections carry the Vote Weight each Voter's Downvote would. They send a Title back once their total
+// reaches the Objection bar: a fixed amount, whatever the Audience.
+/** @param {Array<{ baseWeight: number, sampled: boolean }>} objectors @param {Settings} s */
+function checkObjections(objectors, s) {
+  const weight = objectors.reduce((sum, v) => sum + voteWeight(v.baseWeight, v.sampled, s), 0);
+  return { weight, reached: weight >= s.objectionBar };
+}
+
 module.exports = {
   DEFAULTS,
+  checkObjections,
   sampleKind,
   sampleMinutes,
   hasSampled,

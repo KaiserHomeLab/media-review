@@ -75,7 +75,7 @@ The grace period a Removed Title spends visible to everyone, inside Plex itself 
 _Avoid_: Pending deletion, death row, last chance
 
 **Objection**:
-A Voter's explicit request, made while a Title is Leaving Soon, to send it back to the Owner for another look. Objections carry Vote Weight and must reach a small fixed amount, independent of the Audience, before the Title goes back. A Title can be sent back this way only once: if the Owner Removes it again, its second Leaving Soon allows no Objections.
+A Voter's explicit request, made while a Title is Leaving Soon, to send it back to the Owner for another look. Objections carry Vote Weight and must reach a small fixed amount, independent of the Audience, before the Title goes back. A Title can be sent back this way only once: if the Owner Removes it again, its second Leaving Soon allows no Objections. A Voter who Downvoted the Title can't object to it, and a Keep wipes the slate.
 _Avoid_: Save, appeal, veto, upvote
 
 **Owner**:
