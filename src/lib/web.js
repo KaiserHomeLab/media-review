@@ -276,6 +276,9 @@ function createApp({
     }
   }
 
+  /** @type {Map<string, { at: number, bot: { id: string, username: string }, guilds: Array<{ id: string, name: string }> }>} */
+  const discordSeen = new Map();
+
   // ------------------------------------------------------------------ the Owner's Settings page
   // Apps are saved with their API key; the key is never sent back, and leaving it blank keeps it.
   /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} sub */
@@ -336,11 +339,20 @@ function createApp({
       const d = discordRest({ token, fetch: f });
       let bot, guilds;
       try {
-        [bot, guilds] = await Promise.all([d.me(), d.guilds()]);
+        // The bot and its servers change rarely, and Discord limits asking for them hard: ask once a minute.
+        const hit = discordSeen.get(token);
+        if (hit && now() - hit.at < 60) ({ bot, guilds } = hit);
+        else {
+          bot = await d.me();
+          guilds = await d.guilds();
+          discordSeen.set(token, { at: now(), bot, guilds });
+        }
       } catch (e) {
         return json(res, 502, { error: e.message });
       }
-      const guild = guilds.find(g => g.id === String(body.guildId ?? ''));
+      // The server picked in the form; else the saved one; else, when testing, the first.
+      const wanted = String(body.guildId ?? '') || (sub === '/discord/test' ? (all.discord?.guildId ?? '') : '');
+      const guild = guilds.find(g => g.id === wanted) ?? (sub === '/discord/test' ? guilds[0] : undefined);
       // The server's text channels, for announcements and the Owner's own channel.
       /** @type {Array<{ id: string, name: string }>} */
       let channels = [];
@@ -358,6 +370,7 @@ function createApp({
         return json(res, 200, {
           bot: bot.username,
           guilds: guilds.map(g => ({ id: g.id, name: g.name })),
+          guildId: guild?.id ?? null,
           channels,
           announceChannel: all.discord?.announceChannel ?? '',
           ownerChannel: all.discord?.ownerChannel ?? '',

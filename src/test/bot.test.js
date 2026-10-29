@@ -248,6 +248,8 @@ test('the bot connects once set up, registers its commands in that server, answe
   assert.deepEqual(registered, [
     ['app1', 'g1', ['downvote', 'withdraw', 'object', 'report', 'mine', 'link', 'unlink']],
   ]);
+  await made[0].g.onReady({ applicationId: 'app1', username: 'MR' }); // a reconnect
+  assert.equal(registered.length, 1, 'commands are only sent again when they change');
   await made[0].g.onInteraction({ ...s.interaction('d-x', 'mine'), type: 2, id: 'here', guild_id: 'g1' });
   await made[0].g.onInteraction({ ...s.interaction('d-x', 'mine'), type: 2, id: 'elsewhere', guild_id: 'g2' });
   assert.deepEqual(responded, ['here']);

@@ -239,8 +239,8 @@ function discordForm(editing) {
     field('Your channel', owner, 'Review Queue, send-backs, reports, asks, failures. Make it one only you can see.'),
   );
   channelFields.hidden = true;
-  const loadChannels = async () => {
-    const r = await api('/api/owner/settings/discord/test', 'POST', { token: token.value, guildId: guild.value });
+  /** @param {any} r what Test answered: the channels of r.guildId */
+  const showChannels = r => {
     for (const [select, current] of [
       [announce, r.announceChannel],
       [owner, r.ownerChannel],
@@ -251,11 +251,15 @@ function discordForm(editing) {
           Object.assign(document.createElement('option'), { value: c.id, textContent: `#${c.name}` }),
         ),
       );
-      select.value = guild.value === S.discord?.guildId ? current : '';
+      select.value = r.guildId === S.discord?.guildId ? current : '';
     }
     channelFields.hidden = false;
   };
-  guild.addEventListener('change', () => loadChannels().catch(e => say(result, e.message, false)));
+  guild.addEventListener('change', () =>
+    api('/api/owner/settings/discord/test', 'POST', { token: token.value, guildId: guild.value })
+      .then(showChannels)
+      .catch(e => say(result, e.message, false)),
+  );
   const result = el('span', 'result');
   const steps = el('ol', 'steps');
   for (const s of [
@@ -281,15 +285,16 @@ function discordForm(editing) {
     return b;
   };
   const test = async () => {
-    const { bot, guilds } = await api('/api/owner/settings/discord/test', 'POST', { token: token.value });
+    const r = await api('/api/owner/settings/discord/test', 'POST', { token: token.value });
+    const { bot, guilds } = r;
     if (!guilds.length)
       return say(result, `${bot} works, but isn't in any server yet: add it to yours (step 3).`, false);
     guild.replaceChildren(
       ...guilds.map(g => Object.assign(document.createElement('option'), { value: g.id, textContent: g.name })),
     );
-    if (S.discord?.guildId && guilds.some(g => g.id === S.discord.guildId)) guild.value = S.discord.guildId;
+    guild.value = r.guildId;
     guildField.hidden = false;
-    await loadChannels();
+    showChannels(r);
     say(result, `Works: ${bot}`, true);
   };
   const actions = el('div', 'actions');

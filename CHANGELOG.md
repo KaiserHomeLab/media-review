@@ -59,5 +59,9 @@ number, a fix the last one.
 
 ### Fixed
 
+- Discord in Settings no longer fails with "Discord answered HTTP 429: You are being rate limited".
+  Test asked Discord for the bot's servers twice at once. It now asks once, and remembers the
+  answer for a minute. A short rate limit is waited out, and a long one says how long to wait. The
+  bot also stops re-registering its commands on every reconnect.
 - The Owner's and Media Ops' routes no longer log "Cannot write headers after they are sent" on
   every request. Each answered correctly, then also tried to answer "not found".
