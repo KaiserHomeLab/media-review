@@ -32,16 +32,11 @@
       </p>
       <p class="notice error" id="error" hidden></p>
 
-      <section class="card form" id="plex-card" hidden>
-        <h2>Plex <span class="count" id="plex-name"></span></h2>
-        <label class="field"><span>Address</span>
-          <input id="plex-url" spellcheck="false" />
-          <small>How Media Review reaches your Plex server, e.g. <code>http://plex:32400</code>. It must be the same server.</small>
-        </label>
-        <div class="row"><button class="btn" type="button" id="plex-save">Save</button><span class="result" id="plex-result"></span></div>
+      <section class="card" id="apps-card" hidden>
+        <h2>Apps <span class="count" id="apps-count"></span></h2>
+        <p class="muted hint">Plex was linked at first setup. Add Tautulli for play history, and Radarr and Sonarr if what you Remove should be deleted. Click an app to change it.</p>
+        <div class="app-grid" id="apps"></div>
       </section>
-
-      <div id="apps"></div>
 
       <section class="card form" id="rules-card" hidden>
         <h2>Rules</h2>
@@ -97,5 +92,12 @@
         <div><button class="btn" type="button" id="generate">Generate a key</button></div>
       </section>
     </main>
+    <dialog id="modal" class="modal" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title">Add app</h2>
+        <button class="icon-btn" type="button" id="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </dialog>
   </body>
 </html>
