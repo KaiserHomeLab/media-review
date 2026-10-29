@@ -652,3 +652,40 @@ test('an announced poster is fetched by its signed link without signing in; noth
   assert.equal((await req(`/cover/m2/${posterSig(store, 'm1')}`)).status, 404);
   assert.equal((await req('/poster/m1')).status, 401, 'the normal poster still needs a session');
 });
+
+test("a friend clears finished reports and answered asks from their own list; open ones stay, nobody else's change", async () => {
+  const { store, req, signIn, post } = await setup();
+  store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', tmdbId: '1' },
+    { ratingKey: 'm2', kind: 'movie', title: 'Other', tmdbId: '2' },
+  ]);
+  const [owner, alice, bob] = await Promise.all([1, 2, 3].map(async pin => (await signIn(pin)).cookie));
+  /** @param {string} cookie @param {string} p @param {unknown} body */
+  const send = (cookie, p, body) =>
+    req(p, { method: 'POST', cookie, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const done = await (await send(alice, '/api/titles/m1/problems', { reason: 'audio' })).json();
+  const open = await (await send(alice, '/api/titles/m2/problems', { reason: 'video' })).json();
+  await post(bob, `/api/problems/${done.id}/me-too`);
+  await post(owner, `/api/owner/problem-reports/${done.id}/resolve`);
+  /** @param {string} cookie */
+  const mine = async cookie =>
+    (await (await req('/api/problems', { cookie })).json()).problemReports.map((/** @type {any} */ r) => r.id);
+
+  assert.deepEqual(await (await post(alice, `/api/problems/${open.id}/dismiss`)).json(), { error: 'not-finished' });
+  assert.deepEqual(await (await post(alice, `/api/problems/${done.id}/dismiss`)).json(), { cleared: 1 });
+  assert.deepEqual(await mine(alice), [open.id], 'the open one stays');
+  assert.deepEqual(await mine(bob), [done.id], "bob's list is his own");
+  assert.equal((await (await req('/api/owner/problem-reports', { cookie: owner })).json()).problemReports.length, 1);
+  assert.deepEqual(await (await post(bob, '/api/problems/dismiss-finished')).json(), { cleared: 1 });
+  assert.deepEqual(await mine(bob), []);
+
+  // Asks to bring back, the same way.
+  store.remove('m2', NOW - 20 * 86400, NOW - 86400);
+  store.deleted('m2', NOW - 86400, ['Radarr']);
+  await send(alice, '/api/gone/m2/ask', {});
+  const [ask] = (await (await req('/api/asks', { cookie: alice })).json()).asks;
+  assert.deepEqual(await (await post(alice, `/api/asks/${ask.id}/dismiss`)).json(), { error: 'not-finished' });
+  await send(owner, '/api/owner/held-back/m2/decline', { note: 'no' });
+  assert.deepEqual(await (await post(alice, '/api/asks/dismiss-finished')).json(), { cleared: 1 });
+  assert.deepEqual((await (await req('/api/asks', { cookie: alice })).json()).asks, []);
+});

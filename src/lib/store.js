@@ -124,6 +124,8 @@ function openStore(file) {
   addColumn('leaving_soon', 'deleted_from', 'TEXT'); // apps it's already gone from, if a try half-worked
   addColumn('review_queue', 'sent_back', 'INTEGER NOT NULL DEFAULT 0'); // back by Objections
   addColumn('leaving_soon', 'objections_closed', 'INTEGER NOT NULL DEFAULT 0'); // its second Leaving Soon
+  addColumn('problem_reporters', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
+  addColumn('bring_back_asks', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
   // Titles deleted before holding back existed are held back too, once.
   if (!db.prepare("SELECT 1 FROM settings WHERE key = 'heldBackFrom'").get()) {
     db.exec(`INSERT OR IGNORE INTO held_back (title_key, since)
@@ -548,7 +550,7 @@ function openStore(file) {
         db
           .prepare(
             `SELECT p.*, r.note FROM problem_reports p JOIN problem_reporters r ON r.report_id = p.id
-             WHERE r.voter_id = ? AND (p.outcome IS NULL OR p.decided_at >= ?)
+             WHERE r.voter_id = ? AND r.dismissed = 0 AND (p.outcome IS NULL OR p.decided_at >= ?)
              ORDER BY COALESCE(p.decided_at, r.created_at) DESC, p.id DESC`,
           )
           .all(voterId, since)
@@ -637,7 +639,7 @@ function openStore(file) {
       /** @type {any} */ (
         db
           .prepare(
-            `SELECT * FROM bring_back_asks WHERE voter_id = ? AND (outcome IS NULL OR decided_at >= ?)
+            `SELECT * FROM bring_back_asks WHERE voter_id = ? AND dismissed = 0 AND (outcome IS NULL OR decided_at >= ?)
              ORDER BY COALESCE(decided_at, created_at) DESC, id DESC`,
           )
           .all(voterId, since)
@@ -743,6 +745,29 @@ function openStore(file) {
         db
           .prepare('SELECT discord_id, discord_name FROM link_tokens WHERE token = ? AND created_at >= ?')
           .get(token, notBefore)
+      ),
+
+    // A Voter clears a finished report or answered ask from their own list. Open ones can't be cleared, only
+    // withdrawn; nobody else's list changes. id null: every finished one of theirs.
+    /** @param {string} voterId @param {number | null} id @returns {number} how many were cleared */
+    dismissProblems: (voterId, id) =>
+      Number(
+        db
+          .prepare(
+            `UPDATE problem_reporters SET dismissed = 1 WHERE voter_id = ? AND dismissed = 0 AND (? IS NULL OR report_id = ?)
+             AND report_id IN (SELECT id FROM problem_reports WHERE outcome IS NOT NULL)`,
+          )
+          .run(voterId, id, id).changes,
+      ),
+    /** @param {string} voterId @param {number | null} id @returns {number} how many were cleared */
+    dismissAsks: (voterId, id) =>
+      Number(
+        db
+          .prepare(
+            `UPDATE bring_back_asks SET dismissed = 1 WHERE voter_id = ? AND dismissed = 0 AND outcome IS NOT NULL
+             AND (? IS NULL OR id = ?)`,
+          )
+          .run(voterId, id, id).changes,
       ),
 
     /** @param {string} token @param {string} plexId @param {boolean} isOwner @param {number} now */

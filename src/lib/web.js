@@ -711,6 +711,14 @@ function createApp({
   async function problemRoute(req, res, m, p, s) {
     if (m === 'GET' && p === '/api/problems')
       return json(res, 200, { problemReports: problems.reportsBy(store, s.plexId, now()) });
+    // Clear a finished report from their own list, or all of them.
+    const clear = p.match(/^\/api\/(problems|asks)\/(?:(\d{1,12})\/dismiss|dismiss-finished)$/);
+    if (m === 'POST' && clear) {
+      const id = clear[2] ? Number(clear[2]) : null;
+      const n = clear[1] === 'problems' ? store.dismissProblems(s.plexId, id) : store.dismissAsks(s.plexId, id);
+      if (id != null && !n) return json(res, 409, { error: 'not-finished' });
+      return json(res, 200, { cleared: n });
+    }
     const t = p.match(/^\/api\/titles\/([^/]+)\/(episodes|problems)$/);
     const mine = p.match(/^\/api\/problems\/(\d{1,12})\/(me-too|withdraw)$/);
     if (!(t && (m === 'GET' || (m === 'POST' && t[2] === 'problems'))) && !(mine && m === 'POST')) return null;

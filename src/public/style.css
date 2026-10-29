@@ -971,3 +971,12 @@ code {
   background: #5865f2;
   color: #fff;
 }
+
+/* An action at the end of a card heading (Clear finished). */
+.h2-act {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}

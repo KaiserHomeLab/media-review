@@ -8,6 +8,9 @@ number, a fix the last one.
 
 ### Added
 
+- Friends' pages keep themselves current: Your Problem Reports and Your asks to bring back refresh
+  every minute, and when the tab comes back into view. A notice says when the Owner has just answered
+  one. Finished ones can be cleared from your own list, one at a time or with **Clear finished**.
 - Discord announcements and messages to you. Pick two channels under Settings → Discord.
   **Announcements** gets a card with the poster when something is Leaving Soon, plus its last day,
   when it's staying after all or coming back, and when a reported problem is fixed. It never names
