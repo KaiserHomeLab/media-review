@@ -21,6 +21,7 @@ const {
   evaluateAll,
 } = require('./review');
 const problems = require('./problems');
+const holdback = require('./holdback');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -66,7 +67,9 @@ async function readJson(req) {
  *   log: (msg: string) => void, publicDir: string, publicUrl?: string,
  *   leavingChanged?: () => void, apps: import('./apps').AppSettings, setupCode?: () => string | null,
  *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch,
- *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings> }} ctx
+ *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings>,
+ *   seerr?: () => import('./seerr').Seerr | null }} ctx
+ *   seerr: Seerr as set up on the Settings page right now, or null
  *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
  *   setupCode: the one-time code printed in the log until first setup is done
  */
@@ -87,6 +90,7 @@ function createApp({
   probe = probeApp,
   fetch: f = fetch,
   rules,
+  seerr = () => null,
 }) {
   // The public address: from the container (tests) or the Settings page, read fresh each time.
   const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
@@ -372,7 +376,8 @@ function createApp({
       if (m === 'GET' && p === '/api/v1/status') return json(res, 200, { app: 'media-review', version: VERSION });
       const handled =
         decisions(res, m, p.slice('/api/v1'.length), 'Media Ops') ??
-        problemDecisions(req, res, m, p.slice('/api/v1'.length), 'Media Ops');
+        problemDecisions(req, res, m, p.slice('/api/v1'.length), 'Media Ops') ??
+        heldBackDecisions(req, res, m, p.slice('/api/v1'.length), 'Media Ops');
       if (handled) return handled;
       const poster = p.match(/^\/api\/v1\/poster\/([^/]+)$/);
       if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
@@ -498,12 +503,29 @@ function createApp({
     const reported = await problemRoute(req, res, m, p, s);
     if (reported !== null) return reported;
 
+    // Gone: what was deleted and is held back from Seerr. Friends ask the Owner to bring it back.
+    if (m === 'GET' && p === '/api/gone') return json(res, 200, { gone: holdback.gone(store, s.plexId) });
+    if (m === 'GET' && p === '/api/asks') return json(res, 200, { asks: holdback.asksBy(store, s.plexId, now()) });
+    const g = p.match(/^\/api\/gone\/([^/]+)\/(ask|withdraw)$/);
+    if (m === 'POST' && g) {
+      if (s.isOwner) return json(res, 403, { error: 'The Owner brings it back directly, on the Review Queue page.' });
+      const key = decodeURIComponent(g[1]);
+      const r =
+        g[2] === 'ask'
+          ? holdback.ask(store, s.plexId, key, (await readJson(req)).note, now())
+          : holdback.withdrawAsk(store, s.plexId, key);
+      if (!r.ok) return json(res, 409, { error: r.error });
+      if (g[2] === 'ask') log(`Asked to bring back: ${store.title(key)?.title ?? key}`);
+      return json(res, 200, { asked: g[2] === 'ask' });
+    }
+
     // Owner only: the Review Queue and its decisions, the same ones Media Ops can make (ADR 0003).
     if (p.startsWith('/api/owner/') && !s.isOwner) return json(res, 403, { error: 'Owner only' });
     if (p.startsWith('/api/owner/')) {
       const handled =
         decisions(res, m, p.slice('/api/owner'.length), 'Media Review') ??
-        problemDecisions(req, res, m, p.slice('/api/owner'.length), 'Media Review');
+        problemDecisions(req, res, m, p.slice('/api/owner'.length), 'Media Review') ??
+        heldBackDecisions(req, res, m, p.slice('/api/owner'.length), 'Media Review');
       if (handled) return handled;
       if (p === '/api/owner/rules') return rulesRoute(req, res, m);
       if (p === '/api/owner/settings' || p.startsWith('/api/owner/settings/'))
@@ -613,6 +635,28 @@ function createApp({
       if (!r.ok) return json(res, 409, { error: r.error });
       log(`Problem Report ${outcome} (${via}): ${store.title(String(p?.title_key))?.title ?? p?.title_key}`);
       return json(res, 200, { [outcome]: true });
+    })();
+  }
+
+  // Held back, under /api/v1 (Media Ops) and /api/owner, like the decisions above:
+  //   GET  /held-back                    POST /held-back/:key/bring-back    POST /held-back/:key/decline
+  // Both take an optional { note } the friends who asked see. null when the path isn't one of these.
+  /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} sub @param {string} via */
+  function heldBackDecisions(req, res, m, sub, via) {
+    if (m === 'GET' && sub === '/held-back') return json(res, 200, { heldBack: holdback.heldBackList(store) });
+    const d = sub.match(/^\/held-back\/([^/]+)\/(bring-back|decline)$/);
+    if (m !== 'POST' || !d) return null;
+    return (async () => {
+      const key = decodeURIComponent(d[1]);
+      const name = store.title(key)?.title ?? key;
+      const { note } = await readJson(req);
+      const r =
+        d[2] === 'bring-back'
+          ? await holdback.bringBack(store, seerr(), key, note, now())
+          : holdback.decline(store, key, note, now());
+      if (!r.ok) return json(res, 409, { error: r.error });
+      log(`${d[2] === 'bring-back' ? 'Brought back, requested in Seerr' : 'Declined bringing back'} (${via}): ${name}`);
+      return json(res, 200, d[2] === 'bring-back' ? { broughtBack: true } : { declined: true });
     })();
   }
 

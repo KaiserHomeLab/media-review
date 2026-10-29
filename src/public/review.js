@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// The Owner's page: the Review Queue, Problem Reports and Leaving Soon, with their decisions. Settings has its own page.
+// The Owner's page: the Review Queue, Problem Reports, Leaving Soon and what's held back, with their decisions. Settings has its own page.
 // The same decisions can be made in Media Ops; both go to the same place (ADR 0003).
 'use strict';
 
@@ -219,6 +219,94 @@ async function loadProblems() {
   if (!problemReports.length) $('problems').append(el('li', 'empty', 'No open Problem Reports.'));
 }
 
+const day = (/** @type {string} */ iso) =>
+  new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+// One held-back Title: who asked for it, why it went, and Bring back (off Seerr's blocklist and requested) or
+// Decline, with a note for the friends who asked.
+function heldEntry(h) {
+  const li = el('li', 'entry');
+  const img = el(h.title.poster ? 'img' : 'div', 'poster');
+  if (h.title.poster) Object.assign(img, { src: `/poster/${encodeURIComponent(h.title.ratingKey)}`, alt: '' });
+  const main = el('div', 'main');
+  const head = el('div', 'head');
+  head.append(el('b', '', h.title.name ?? h.title.ratingKey));
+  if (h.title.year) head.append(el('span', 'muted', ` (${h.title.year})`));
+  const chips = el('div', 'meta');
+  chips.append(el('span', 'chip', h.title.library ?? (h.title.kind === 'show' ? 'Show' : 'Movie')));
+  chips.append(
+    el(
+      'span',
+      'chip kind',
+      h.asks.length ? `↺ ${h.asks.length} ask${h.asks.length === 1 ? '' : 's'}` : `↺ Deleted ${day(h.deletedAt)}`,
+    ),
+  );
+  main.append(head, chips);
+  for (const a of h.asks)
+    main.append(el('div', 'line', `${a.voter} asked ${ago(a.at)}${a.note ? `: “${a.note}”` : ''}`));
+
+  // Why it went: each Remove's Downvotes and Objections, then the Keeps, Removes and deletions in order.
+  const w = (/** @type {any[]} */ xs) =>
+    xs.map(x => (x.voteWeight == null ? x.voter : `${x.voter} (${num(x.voteWeight)})`)).join(', ');
+  for (const r of h.history.votes) {
+    if (r.downvotes.length) main.append(el('div', 'line', `Downvoted, as of ${day(r.at)}: ${w(r.downvotes)}`));
+    if (r.objections.length) main.append(el('div', 'line', `Objected, as of ${day(r.at)}: ${w(r.objections)}`));
+  }
+  const events = [
+    ...h.history.decisions.map(d => ({ at: d.at, text: `${d.decision === 'keep' ? 'Kept' : 'Removed'} ${day(d.at)}` })),
+    ...h.history.deletions.map(d => ({ at: d.at, text: `Deleted ${day(d.at)} from ${d.from.join(' and ')}` })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  if (events.length) main.append(el('div', 'line', events.map(e => e.text).join(' · ')));
+  if (h.blockError) main.append(el('div', 'line problem', `Not blocked in Seerr: ${h.blockError}`));
+
+  const note = Object.assign(el('input', 'note-in'), {
+    placeholder: h.asks.length ? 'Note for them (optional)' : 'Note (optional)',
+    maxLength: 500,
+  });
+  if (h.asks.length) main.append(note);
+  const acts = el('div', 'acts');
+  const choices = [['bring-back', 'Bring back', 'btn small primary']];
+  if (h.asks.length) choices.push(['decline', 'Decline', 'btn small ghost']);
+  for (const [what, label, cls] of choices) {
+    const b = el('button', cls, label);
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      if (
+        what === 'bring-back' &&
+        !confirm(`Bring back ${h.title.name}? It comes off Seerr's blocklist and is requested there, approved.`)
+      )
+        return;
+      b.disabled = true;
+      fail('');
+      try {
+        await api(`/api/owner/held-back/${encodeURIComponent(h.title.ratingKey)}/${what}`, {
+          method: 'POST',
+          body: JSON.stringify({ note: note.value }),
+        });
+      } catch (err) {
+        if (err.message !== 'not-gone') fail(err.message);
+      }
+      loadAll();
+    });
+    acts.append(b);
+  }
+  li.append(img, main, acts);
+  return li;
+}
+
+async function loadHeld() {
+  const { heldBack } = await api('/api/owner/held-back');
+  const asked = heldBack.filter(h => h.asks.length);
+  const rest = heldBack.filter(h => !h.asks.length);
+  $('held-count').textContent = `${asked.length ? `${asked.length} asked for · ` : ''}${heldBack.length} held back`;
+  $('held').replaceChildren(...asked.map(heldEntry));
+  if (!asked.length) $('held').append(el('li', 'empty', 'Nobody has asked for anything back.'));
+  // The rest, folded away: there can be a lot of them over time.
+  $('more-held').hidden = !rest.length;
+  $('more-held-label').textContent = `Everything else held back (${rest.length})`;
+  $('held-rest').replaceChildren(...rest.map(heldEntry));
+}
+
 async function loadLeaving() {
   const { leavingSoon } = await api('/api/owner/leaving-soon');
   $('leaving-count').textContent = leavingSoon.length ? `${leavingSoon.length} leaving` : 'nothing leaving';
@@ -233,6 +321,7 @@ const loadAll = () =>
     loadQueue(),
     loadProblems(),
     loadLeaving(),
+    loadHeld(),
     api('/api/owner/rules')
       .then(r => (leavingDays = r.rules.leavingSoonDays))
       .catch(() => {}),
@@ -250,6 +339,7 @@ loadAll()
     $('queue-card').hidden = false;
     $('problems-card').hidden = false;
     $('leaving-card').hidden = false;
+    $('held-card').hidden = false;
   })
   .catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));
 // Keep it current while it's open, e.g. after a decision made in Media Ops.

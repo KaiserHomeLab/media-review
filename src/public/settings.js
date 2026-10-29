@@ -36,8 +36,9 @@ function say(where, text, ok) {
 const GROUPS = [
   ['Play history', ['tautulli']],
   ['Deleting what you Remove', ['radarr', 'sonarr', 'sonarrAnime']],
+  ['Holding back what was deleted', ['seerr']],
 ];
-const ICON = { plex: 'PX', tautulli: 'TA', radarr: 'RA', sonarr: 'SO', sonarrAnime: 'SA' };
+const ICON = { plex: 'PX', tautulli: 'TA', radarr: 'RA', sonarr: 'SO', sonarrAnime: 'SA', seerr: 'SE' };
 let S = { plex: null, apps: [] };
 /** @type {Record<string, { up: boolean, text: string }>} */
 const appStatus = {};

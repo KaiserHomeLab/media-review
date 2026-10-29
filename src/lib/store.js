@@ -59,6 +59,19 @@ CREATE TABLE IF NOT EXISTS problem_reports (
   outcome TEXT CHECK (outcome IN ('resolved', 'closed')), owner_note TEXT, decided_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS problem_reports_title ON problem_reports (title_key);
+CREATE TABLE IF NOT EXISTS held_back (
+  title_key TEXT PRIMARY KEY, since INTEGER NOT NULL, blocked INTEGER NOT NULL DEFAULT 0, block_error TEXT
+);
+CREATE TABLE IF NOT EXISTS bring_back_asks (
+  id INTEGER PRIMARY KEY, title_key TEXT NOT NULL, voter_id TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL,
+  outcome TEXT CHECK (outcome IN ('brought-back', 'declined')), owner_note TEXT, decided_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS bring_back_asks_title ON bring_back_asks (title_key);
+CREATE TABLE IF NOT EXISTS title_votes (
+  title_key TEXT NOT NULL, at INTEGER NOT NULL, voter_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('downvote', 'objection')), vote_weight REAL
+);
+CREATE INDEX IF NOT EXISTS title_votes_title ON title_votes (title_key);
 CREATE TABLE IF NOT EXISTS problem_reporters (
   report_id INTEGER NOT NULL, voter_id TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL,
   PRIMARY KEY (report_id, voter_id)
@@ -100,6 +113,15 @@ function openStore(file) {
   addColumn('leaving_soon', 'deleted_from', 'TEXT'); // apps it's already gone from, if a try half-worked
   addColumn('review_queue', 'sent_back', 'INTEGER NOT NULL DEFAULT 0'); // back by Objections
   addColumn('leaving_soon', 'objections_closed', 'INTEGER NOT NULL DEFAULT 0'); // its second Leaving Soon
+  // Titles deleted before holding back existed are held back too, once.
+  if (!db.prepare("SELECT 1 FROM settings WHERE key = 'heldBackFrom'").get()) {
+    db.exec(`INSERT OR IGNORE INTO held_back (title_key, since)
+      SELECT d.title_key, MAX(d.at) FROM deletions d JOIN titles t ON t.rating_key = d.title_key AND t.seen = 0
+      GROUP BY d.title_key`);
+    db.prepare("INSERT INTO settings (key, value) VALUES ('heldBackFrom', ?)").run(
+      String(Math.floor(Date.now() / 1000)),
+    );
+  }
 
   /** @param {() => void} fn */
   const tx = fn => {
@@ -382,6 +404,12 @@ function openStore(file) {
         const back = /** @type {any} */ (
           db.prepare('SELECT sent_back FROM review_queue WHERE title_key = ?').get(titleKey)
         );
+        // Who wanted it gone, and who objected, as they weighed: its history if it's ever asked for again.
+        db.prepare(
+          `INSERT INTO title_votes (title_key, at, voter_id, kind, vote_weight)
+           SELECT title_key, ?, voter_id, 'downvote', vote_weight FROM queued_downvotes WHERE title_key = ?
+           UNION ALL SELECT title_key, ?, voter_id, 'objection', vote_weight FROM objections WHERE title_key = ?`,
+        ).run(now, titleKey, now, titleKey);
         for (const table of ['review_queue', 'queued_downvotes', 'objections'])
           db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
         db.prepare(
@@ -400,10 +428,19 @@ function openStore(file) {
       void db
         .prepare('UPDATE leaving_soon SET delete_error = ?, deleted_from = ? WHERE title_key = ?')
         .run(error, deletedFrom.join(',') || null, titleKey),
-    // Deleted: it leaves Leaving Soon and the catalogue. Its decisions stay as its history.
+    // Deleted: it leaves Leaving Soon and the catalogue, and is held back from being requested again. Its
+    // decisions and votes stay as its history.
     /** @param {string} titleKey @param {number} now @param {string[]} deletedFrom */
     deleted: (titleKey, now, deletedFrom) =>
       tx(() => {
+        db.prepare(
+          `INSERT INTO title_votes (title_key, at, voter_id, kind, vote_weight)
+           SELECT title_key, ?, voter_id, 'objection', vote_weight FROM objections WHERE title_key = ?`,
+        ).run(now, titleKey);
+        db.prepare(
+          `INSERT INTO held_back (title_key, since) VALUES (?, ?)
+           ON CONFLICT (title_key) DO UPDATE SET since = excluded.since, blocked = 0, block_error = NULL`,
+        ).run(titleKey, now);
         for (const table of ['leaving_soon', 'downvotes', 'objections'])
           db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
         db.prepare('INSERT INTO deletions (title_key, at, deleted_from) VALUES (?, ?, ?)').run(
@@ -515,6 +552,95 @@ function openStore(file) {
           'UPDATE problem_reports SET outcome = ?, owner_note = ?, decided_at = ? WHERE id = ? AND outcome IS NULL',
         )
         .run(outcome, note, now, id).changes === 1,
+
+    // Held back: deleted, so blocklisted in Seerr until the Owner brings it back.
+    /** @returns {Array<{ title_key: string, since: number, blocked: number, block_error: string | null }>} newest first */
+    heldBack: () => /** @type {any} */ (db.prepare('SELECT * FROM held_back ORDER BY since DESC, title_key').all()),
+    /** @param {string} titleKey */
+    isHeldBack: titleKey => !!db.prepare('SELECT 1 FROM held_back WHERE title_key = ?').get(titleKey),
+    /** @param {string} titleKey @param {string | null} error null once it's on Seerr's blocklist */
+    setBlocked: (titleKey, error) =>
+      void db
+        .prepare('UPDATE held_back SET blocked = ?, block_error = ? WHERE title_key = ?')
+        .run(error ? 0 : 1, error, titleKey),
+    // Brought back: no longer held back, and every open ask for it is answered.
+    /** @param {string} titleKey @param {string | null} note @param {number} now */
+    release: (titleKey, note, now) =>
+      tx(() => {
+        db.prepare('DELETE FROM held_back WHERE title_key = ?').run(titleKey);
+        db.prepare(
+          `UPDATE bring_back_asks SET outcome = 'brought-back', owner_note = ?, decided_at = ?
+           WHERE title_key = ? AND outcome IS NULL`,
+        ).run(note, now, titleKey);
+      }),
+    /** @param {string} titleKey @param {string | null} note @param {number} now @returns {number} asks declined */
+    declineAsks: (titleKey, note, now) =>
+      Number(
+        db
+          .prepare(
+            `UPDATE bring_back_asks SET outcome = 'declined', owner_note = ?, decided_at = ?
+             WHERE title_key = ? AND outcome IS NULL`,
+          )
+          .run(note, now, titleKey).changes,
+      ),
+    /** @param {string} titleKey @param {string} voterId @param {string | null} note @param {number} now @returns {boolean} false if asked already */
+    addAsk: (titleKey, voterId, note, now) => {
+      if (
+        db
+          .prepare('SELECT 1 FROM bring_back_asks WHERE title_key = ? AND voter_id = ? AND outcome IS NULL')
+          .get(titleKey, voterId)
+      )
+        return false;
+      db.prepare('INSERT INTO bring_back_asks (title_key, voter_id, note, created_at) VALUES (?, ?, ?, ?)').run(
+        titleKey,
+        voterId,
+        note,
+        now,
+      );
+      return true;
+    },
+    /** @param {string} titleKey @param {string} voterId @returns {boolean} false if there was none open */
+    removeAsk: (titleKey, voterId) =>
+      db
+        .prepare('DELETE FROM bring_back_asks WHERE title_key = ? AND voter_id = ? AND outcome IS NULL')
+        .run(titleKey, voterId).changes === 1,
+    /** @param {string} titleKey @returns {Array<{ voter_id: string, username: string | null, note: string | null, created_at: number }>} */
+    openAsksOf: titleKey =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT a.voter_id, v.username, a.note, a.created_at FROM bring_back_asks a
+             LEFT JOIN voters v ON v.plex_id = a.voter_id WHERE a.title_key = ? AND a.outcome IS NULL
+             ORDER BY a.created_at, a.id`,
+          )
+          .all(titleKey)
+      ),
+    // One Voter's asks: open ones, and each answered since `since`. Newest first.
+    /**
+     * @param {string} voterId @param {number} since
+     * @returns {Array<{ id: number, title_key: string, note: string | null, created_at: number,
+     *   outcome: 'brought-back' | 'declined' | null, owner_note: string | null, decided_at: number | null }>}
+     */
+    asksBy: (voterId, since) =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT * FROM bring_back_asks WHERE voter_id = ? AND (outcome IS NULL OR decided_at >= ?)
+             ORDER BY COALESCE(decided_at, created_at) DESC, id DESC`,
+          )
+          .all(voterId, since)
+      ),
+    // Who Downvoted it, and who objected, each time it was Removed or deleted.
+    /** @param {string} titleKey @returns {Array<{ at: number, voter_id: string, username: string | null, kind: 'downvote' | 'objection', vote_weight: number | null }>} */
+    votesOf: titleKey =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT t.at, t.voter_id, v.username, t.kind, t.vote_weight FROM title_votes t
+             LEFT JOIN voters v ON v.plex_id = t.voter_id WHERE t.title_key = ? ORDER BY t.at, t.vote_weight DESC`,
+          )
+          .all(titleKey)
+      ),
 
     /** @param {string} token @param {string} plexId @param {boolean} isOwner @param {number} now */
     addSession: (token, plexId, isOwner, now) =>

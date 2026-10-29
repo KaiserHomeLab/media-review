@@ -2,12 +2,13 @@
 // Copyright (c) 2026 KaiserHomeLab
 //
 // The apps Media Review works with, as the Owner set them up on the Settings page: Plex (from first
-// setup), Tautulli, Radarr and up to two Sonarrs. Kept in the database (so in /config), read fresh on
+// setup), Tautulli, Radarr, up to two Sonarrs, and Seerr. Kept in the database (so in /config), read fresh on
 // every use, so a change takes effect without a restart. API keys and the Plex token never leave the
 // server once saved.
 'use strict';
 const { fetchJson, join } = require('./http');
 const { arr } = require('./arr');
+const { seerr } = require('./seerr');
 
 /** @typedef {import('./http').Fetch} Fetch */
 /** @typedef {{ url: string, apiKey: string }} AppConfig */
@@ -38,6 +39,13 @@ const APPS = /** @type {const} */ ({
     port: 8989,
     keyHelp: "The anime Sonarr's Settings → General → Security → API Key.",
     needed: 'A second Sonarr for anime, if you have one. Shows are deleted from whichever Sonarr has them.',
+  },
+  seerr: {
+    label: 'Seerr',
+    port: 5055,
+    keyHelp: 'Seerr → Settings → General → API Key.',
+    needed:
+      "Holds back what's been deleted: it goes on Seerr's blocklist, and friends ask you in Media Review to bring it back.",
   },
 });
 /** @typedef {keyof typeof APPS} AppId */
@@ -105,6 +113,15 @@ async function probe(id, cfg, f = fetch) {
     if (body?.response?.result !== 'success') throw new Error(`${label} refused the API key`);
     return String(body.response.data?.tautulli_version ?? '');
   }
+  if (id === 'seerr') {
+    const headers = { 'X-Api-Key': cfg.apiKey };
+    const me = await fetchJson(f, label, join(cfg.url, '/api/v1/auth/me'), { headers }).catch(e => {
+      throw new Error(/HTTP 40[13]/.test(e.message) ? `${label} refused the API key` : e.message, { cause: e });
+    });
+    if (me?.id == null) throw new Error(`that address isn't ${label}`);
+    const status = await fetchJson(f, label, join(cfg.url, '/api/v1/status'), { headers });
+    return String(status?.version ?? '');
+  }
   const status = await fetchJson(f, label, join(cfg.url, '/api/v3/system/status'), {
     headers: { 'X-Api-Key': cfg.apiKey },
   });
@@ -131,4 +148,11 @@ function arrsFrom(settings, f) {
     });
 }
 
-module.exports = { APPS, appSettings, cleanUrl, probe, arrsFrom };
+// Seerr, when it's set up.
+/** @param {AppSettings} settings @param {Fetch} [f] */
+function seerrFrom(settings, f) {
+  const cfg = settings.read().seerr;
+  return cfg ? seerr({ url: cfg.url, apiKey: cfg.apiKey, fetch: f }) : null;
+}
+
+module.exports = { APPS, appSettings, cleanUrl, probe, arrsFrom, seerrFrom };

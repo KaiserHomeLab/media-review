@@ -21,7 +21,7 @@ Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, n
    1. Enter the setup code.
    2. Sign in with the Plex account that owns your server. You become Media Review's Owner.
    3. Pick the server, and the address Media Review uses to reach it, e.g. `http://plex:32400`.
-6. On **Settings** (⚙ in the top bar), add **Tautulli**, which is needed for play history. Add **Radarr**, **Sonarr** and **Sonarr (anime)** if you want what you Remove to be deleted. Each has **Test** and **Save**. Saved API keys are never shown again, and leaving the key blank keeps the saved one.
+6. On **Settings** (⚙ in the top bar), add **Tautulli**, which is needed for play history. Add **Radarr**, **Sonarr** and **Sonarr (anime)** if you want what you Remove to be deleted, and **Seerr** if you want deleted titles held back from being requested again. Each has **Test** and **Save**. Saved API keys are never shown again, and leaving the key blank keeps the saved one.
 
 **Reaching it from outside, with a Cloudflare Tunnel:** add a public hostname, for example `review.example.com`, with the service `http://media-review:8485`. The cloudflared container must be on the same custom network. Then put `https://review.example.com` in **Settings → Public address**, so Plex sign-in comes back there and sign-in cookies stay on https. Do first setup before you open the tunnel, or keep the setup code private; it's what stops anyone else from claiming the install.
 
@@ -58,6 +58,8 @@ Every request sends the key as `X-Api-Key`.
 - `POST /api/v1/leaving-soon/:ratingKey/keep`: Keep after all
 - `GET /api/v1/problem-reports`: `{ problemReports: [...] }`, the open Problem Reports, oldest first, each with its Title, the part (`"S2 E3 · Title"`, `"Season 2"`, or `null` for the whole Title), the reason, and every reporter with their note
 - `POST /api/v1/problem-reports/:id/resolve` and `…/close`: the Owner's decision, with an optional `{ "note": "…" }` the reporters see
+- `GET /api/v1/held-back`: `{ heldBack: [...] }`, deleted Titles blocklisted in Seerr, the ones friends asked for first, each with who asked and the Title's history
+- `POST /api/v1/held-back/:ratingKey/bring-back` and `…/decline`: the Owner's decision, with an optional `{ "note": "…" }` for the friends who asked. Bring back takes it off Seerr's blocklist and requests it
 - `GET /api/v1/poster/:ratingKey`: the Title's poster
 
 The Owner's own pages use the same routes under `/api/owner/` with their session instead of the key.

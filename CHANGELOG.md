@@ -8,6 +8,12 @@ number, a fix the last one.
 
 ### Added
 
+- Holding back deleted titles: with **Seerr** added under Settings, a title Media Review deletes goes
+  on Seerr's blocklist, so it can't simply be requested and downloaded again. Friends find it under a
+  **Gone** tab and can **Ask to bring it back**. You see who asked and why the title went (who
+  Downvoted it and how much, Objections, Keeps, Removes, deletions), then **Bring back** (off the
+  blocklist and requested in Seerr) or **Decline**, with an optional note. Titles deleted before this
+  version are held back too.
 - Problem Reports: a Voter reports a broken or poor copy of a movie, a whole show, a season or one
   episode, picking what's wrong and adding a note. Someone with the same problem says "me too" on the
   open one. The Owner resolves or closes it, with an optional note, on the Review Queue page or in
