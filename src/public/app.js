@@ -531,6 +531,29 @@ function welcomeBanner() {
   document.querySelector('main')?.prepend(box);
 }
 
+// ------------------------------------------------------------------ quack
+// Type "quack" in the search box: a rubber duck waddles across the bottom of the page. For our rubber duck.
+const isQuack = (/** @type {string} */ q) => q.trim().toLowerCase() === 'quack';
+const DUCK = `<svg viewBox="0 0 64 56" width="64" height="56" aria-hidden="true">
+  <ellipse cx="30" cy="38" rx="22" ry="14" fill="#f5c518"/>
+  <path d="M10 34 q-6 -10 4 -12 q2 6 -4 12z" fill="#f5c518"/>
+  <circle cx="44" cy="20" r="11" fill="#f5c518"/>
+  <path d="M53 19 l10 3 l-10 4 z" fill="#f08a1c"/>
+  <circle cx="47" cy="17" r="2" fill="#1a1a19"/>
+  <path d="M22 36 q8 8 18 0" fill="none" stroke="#d9a90f" stroke-width="2.5" stroke-linecap="round"/>
+</svg>`;
+function duck() {
+  if (document.querySelector('.duck')) return;
+  const d = el('div', 'duck');
+  d.setAttribute('role', 'status');
+  const body = el('div', 'duck-body');
+  body.innerHTML = DUCK;
+  d.append(el('div', 'duck-say', 'Thanks, you know who you are!'), body);
+  document.body.append(d);
+  // It walks across in 7 seconds; with reduced motion it just sits in the corner for a moment.
+  setTimeout(() => d.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 4000 : 7200);
+}
+
 // ------------------------------------------------------------------ Discord
 // Whether this account's Discord is connected, and Disconnect. Connecting starts in Discord, with /link.
 async function loadDiscord() {
@@ -737,7 +760,9 @@ async function start() {
   $('search').addEventListener('input', e => {
     clearTimeout(timer);
     timer = setTimeout(() => {
+      const was = query;
       query = /** @type {HTMLInputElement} */ (e.target).value;
+      if (isQuack(query) && !isQuack(was)) duck();
       load();
     }, 200);
   });

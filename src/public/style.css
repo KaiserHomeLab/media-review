@@ -1063,3 +1063,56 @@ button.chip.founder:focus-visible {
   outline: none;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
+
+/* quack (see duck() in app.js): a duck waddles along the bottom, left to right. */
+.duck {
+  position: fixed;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  animation: duck-walk 7s linear forwards;
+}
+.duck-body {
+  animation: duck-waddle 0.45s ease-in-out infinite alternate;
+  transform-origin: 50% 100%;
+}
+.duck-say {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--line);
+}
+@keyframes duck-walk {
+  from {
+    transform: translateX(-140px);
+  }
+  to {
+    transform: translateX(calc(100vw + 40px));
+  }
+}
+@keyframes duck-waddle {
+  from {
+    transform: rotate(-7deg) translateY(0);
+  }
+  to {
+    transform: rotate(7deg) translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .duck,
+  .duck-body {
+    animation: none;
+  }
+  .duck {
+    left: auto;
+    right: max(16px, env(safe-area-inset-right, 0px));
+  }
+}
