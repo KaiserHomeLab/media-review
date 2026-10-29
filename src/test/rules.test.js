@@ -154,3 +154,18 @@ test('deletions only run between 04:00 and 07:00', () => {
   assert.equal(inQuietWindow(at('2026-11-12 07:00'), 4), false);
   assert.equal(inQuietWindow(at('2026-11-12 13:00'), 4), false);
 });
+
+// ------------------------------------------------------------------ 0011: editable rules
+const { sampleKind } = require('../lib/rules');
+
+test('anime has its own Sample length, picked by Plex library', () => {
+  const s = { ...DEFAULTS, sampleShowMinutes: 10, sampleAnimeMinutes: 25, animeLibraries: ['3'] };
+  const anime = { kind: /** @type {const} */ ('show'), library_key: '3' };
+  const tv = { kind: /** @type {const} */ ('show'), library_key: '2' };
+  assert.equal(sampleKind(anime, s), 'anime');
+  assert.equal(sampleKind(tv, s), 'show');
+  assert.equal(sampleKind({ kind: 'movie', library_key: '3' }, s), 'movie', 'a movie is a movie, whatever its library');
+  const twenty = [{ seconds: 20 * MIN, watched: false }];
+  assert.equal(hasSampled('show', twenty, s), true);
+  assert.equal(hasSampled('anime', twenty, s), false);
+});

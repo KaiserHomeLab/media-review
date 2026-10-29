@@ -162,16 +162,21 @@ function openStore(file) {
         .all()
         .map(r => ({ key: String(r.k), kind: /** @type {'movie' | 'show'} */ (r.kind) })),
     // The Plex libraries Titles are in, in Plex's order, for the Voter's tabs.
-    /** @returns {Array<{ name: string, kind: 'movie' | 'show', count: number }>} */
+    /** @returns {Array<{ name: string, kind: 'movie' | 'show', count: number, key: string | null }>} */
     libraries: () =>
       db
         .prepare(
-          `SELECT library AS name, MIN(kind) AS kind, COUNT(*) AS n FROM titles
+          `SELECT library AS name, MIN(kind) AS kind, COUNT(*) AS n, MIN(library_key) AS k FROM titles
            WHERE seen = 1 AND library IS NOT NULL GROUP BY library
            ORDER BY MIN(library_pos), library COLLATE NOCASE`,
         )
         .all()
-        .map(r => ({ name: String(r.name), kind: /** @type {'movie' | 'show'} */ (r.kind), count: Number(r.n) })),
+        .map(r => ({
+          name: String(r.name),
+          kind: /** @type {'movie' | 'show'} */ (r.kind),
+          count: Number(r.n),
+          key: r.k == null ? null : String(r.k), // the Plex section id
+        })),
     /** @param {string} key @returns {TitleRow | undefined} */
     title: key => /** @type {any} */ (db.prepare('SELECT * FROM titles WHERE rating_key = ?').get(key)),
     /** @param {string} search @param {number} limit @param {string} [library] only this Plex library @returns {TitleRow[]} */

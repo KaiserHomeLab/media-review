@@ -6,9 +6,10 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const path = require('node:path');
 const { openStore } = require('../lib/store');
-const { DEFAULTS } = require('../lib/rules');
 const { createApp } = require('../lib/web');
 const { appSettings } = require('../lib/apps');
+const { ruleSettings } = require('../lib/rule-settings');
+const { castDownvote, reviewQueue } = require('../lib/review');
 
 const NOW = 1_800_000_000;
 const CODE = 'K7QF-2M9X';
@@ -46,12 +47,14 @@ async function setup(opts = {}) {
   let code = /** @type {string | null} */ (opts.setUp ? null : CODE);
   let changes = 0;
   const probes = /** @type {any[]} */ ([]);
+  const rules = ruleSettings(store);
   const app = createApp({
     store,
     apps,
+    rules,
     plex: fakePlex,
     machineId: async () => apps.read().plex?.machineId ?? '',
-    settings: DEFAULTS,
+    settings: rules.values,
     now: () => NOW,
     log: () => {},
     publicDir: path.join(__dirname, '..', 'public'),
@@ -104,6 +107,7 @@ async function setup(opts = {}) {
   return {
     store,
     apps,
+    rules,
     req,
     body,
     plexSignIn,
@@ -312,4 +316,78 @@ test('the public address is set, cleared, and used for sign-in', async () => {
   await s.plexSignIn(1);
   assert.deepEqual(await s.body(await set('')), [200, { publicUrl: '' }]);
   assert.equal(s.apps.read().publicUrl, undefined);
+});
+
+// ------------------------------------------------------------------ the rules (ticket 0011)
+
+test('only the Owner sees or changes the rules', async () => {
+  const s = await setup({ setUp: true });
+  await s.plexSignIn(2);
+  assert.equal((await s.req('/api/owner/rules')).status, 403);
+  assert.equal((await s.req('/api/owner/rules', { method: 'PUT', body: { minimumAudience: '1' } })).status, 403);
+});
+
+test('the rules start as the defaults, with the share as a percentage and the show libraries to pick anime from', async () => {
+  const s = await ownerSignedIn();
+  s.store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'A Movie', library: 'Movies', libraryKey: '1' },
+    { ratingKey: 's1', kind: 'show', title: 'A Show', library: 'TV Shows', libraryKey: '2' },
+    { ratingKey: 'a1', kind: 'show', title: 'An Anime', library: 'Anime', libraryKey: '3' },
+  ]);
+  const [, body] = await s.body(await s.req('/api/owner/rules'));
+  assert.equal(body.rules.downvoteSharePercent, 50);
+  assert.equal(body.rules.minimumAudience, 3);
+  assert.equal('downvoteShare' in body.rules, false);
+  assert.deepEqual(body.showLibraries, [
+    { key: '2', name: 'TV Shows' },
+    { key: '3', name: 'Anime' },
+  ]);
+});
+
+test('values that make no sense are refused with a reason for each, and nothing changes', async () => {
+  const s = await ownerSignedIn();
+  const [status, body] = await s.body(
+    await s.req('/api/owner/rules', {
+      method: 'PUT',
+      body: { minimumAudience: '0', downvoteSharePercent: '120', titleBonus: '-1' },
+    }),
+  );
+  assert.equal(status, 400);
+  assert.deepEqual(Object.keys(body.errors).sort(), ['downvoteShare', 'minimumAudience', 'titleBonus']);
+  assert.equal(s.rules.values.minimumAudience, 3);
+});
+
+test('lowering the Minimum Audience queues a Title straight away, and raising it again takes nothing out', async () => {
+  const s = await ownerSignedIn();
+  s.store.replaceTitles([{ ratingKey: 'm1', kind: 'movie', title: 'A Movie' }]);
+  for (const v of ['a', 'b']) {
+    s.store.upsertVoter({ plexId: v, username: v });
+    s.store.upsertPlays([{ id: v, voterId: v, titleKey: 'm1', started: NOW - 60, seconds: 3600, watched: true }]);
+    castDownvote(s.store, s.rules.values, v, 'm1', NOW);
+  }
+  assert.equal(reviewQueue(s.store).length, 0, 'an Audience of 2 is below 3');
+
+  const lower = await s.body(await s.req('/api/owner/rules', { method: 'PUT', body: { minimumAudience: '2' } }));
+  assert.deepEqual([lower[0], lower[1].queued, lower[1].rules.minimumAudience], [200, 1, 2]);
+  assert.equal(reviewQueue(s.store).length, 1);
+
+  await s.req('/api/owner/rules', { method: 'PUT', body: { minimumAudience: '5' } });
+  assert.equal(reviewQueue(s.store).length, 1, 'still queued');
+});
+
+test('a library marked as anime uses the anime Sample length', async () => {
+  const s = await ownerSignedIn();
+  s.store.replaceTitles([{ ratingKey: 'a1', kind: 'show', title: 'An Anime', library: 'Anime', libraryKey: '3' }]);
+  for (const v of ['a', 'b', 'c']) {
+    s.store.upsertVoter({ plexId: v, username: v });
+    // 15 minutes: a Sample at the show length (10), not at an anime length of 20.
+    s.store.upsertPlays([{ id: v, voterId: v, titleKey: 'a1', started: NOW - 60, seconds: 15 * 60, watched: false }]);
+  }
+  await s.req('/api/owner/rules', { method: 'PUT', body: { sampleAnimeMinutes: '20', animeLibraries: ['3'] } });
+  castDownvote(s.store, s.rules.values, 'a', 'a1', NOW);
+  castDownvote(s.store, s.rules.values, 'b', 'a1', NOW);
+  assert.equal(reviewQueue(s.store).length, 0, 'nobody has Sampled it at the anime length');
+
+  const back = await s.body(await s.req('/api/owner/rules', { method: 'PUT', body: { animeLibraries: [] } }));
+  assert.equal(back[1].queued, 1, 'as TV, all three Sampled it, and two Downvoted');
 });

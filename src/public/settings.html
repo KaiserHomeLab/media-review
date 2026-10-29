@@ -43,6 +43,38 @@
 
       <div id="apps"></div>
 
+      <section class="card form" id="rules-card" hidden>
+        <h2>Rules</h2>
+        <p class="muted">
+          What it takes for a Title to reach your Review Queue. Saving checks every Title again: a lower bar can
+          send some to the queue straight away, and nothing already there is taken out.
+        </p>
+
+        <h3 class="sub-h">A real try (a Sample)</h3>
+        <div class="grid-form">
+          <label class="field"><span>Movie</span><input data-rule="sampleMovieMinutes" inputmode="numeric" /><small>minutes, added up across sessions</small><em></em></label>
+          <label class="field"><span>TV show</span><input data-rule="sampleShowMinutes" inputmode="numeric" /><small>minutes, across episodes and sessions</small><em></em></label>
+          <label class="field"><span>Anime</span><input data-rule="sampleAnimeMinutes" inputmode="numeric" /><small>minutes, for shows in the libraries below</small><em></em></label>
+        </div>
+        <div class="field"><span>Libraries that are anime</span><div class="checks" id="anime-libraries"></div><em data-error="animeLibraries"></em></div>
+
+        <h3 class="sub-h">Reaching the Review Queue</h3>
+        <div class="grid-form">
+          <label class="field"><span>Minimum Audience</span><input data-rule="minimumAudience" inputmode="numeric" /><small>Voters who have tried it, before it can be queued</small><em></em></label>
+          <label class="field"><span>Downvote share</span><input data-rule="downvoteSharePercent" data-error-key="downvoteShare" inputmode="decimal" /><small>% of the Audience's Vote Weight</small><em></em></label>
+          <label class="field"><span>Title Bonus</span><input data-rule="titleBonus" inputmode="decimal" /><small>extra weight for having tried it</small><em></em></label>
+          <label class="field"><span>Base Weight window</span><input data-rule="baseWeightDays" inputmode="numeric" /><small>days of watching that count</small><em></em></label>
+        </div>
+
+        <h3 class="sub-h">Leaving Soon</h3>
+        <div class="grid-form">
+          <label class="field"><span>Length</span><input data-rule="leavingSoonDays" inputmode="numeric" /><small>days, from the next Remove</small><em></em></label>
+          <label class="field"><span>Deletion hour</span><input data-rule="deleteHour" inputmode="numeric" /><small>0–23, server time; deletions run for three hours from it</small><em></em></label>
+        </div>
+
+        <div class="row"><button class="btn primary" type="button" id="rules-save">Save rules</button><span class="result" id="rules-result"></span></div>
+      </section>
+
       <section class="card form" id="public-card" hidden>
         <h2>Public address</h2>
         <label class="field"><span>The address friends open</span>

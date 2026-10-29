@@ -99,6 +99,60 @@ function appCard(a) {
   return card;
 }
 
+// ------------------------------------------------------------------ rules
+let animeKeys = [];
+function showRules(r, libraries) {
+  for (const input of document.querySelectorAll('[data-rule]')) input.value = String(r[input.dataset.rule] ?? '');
+  animeKeys = [...r.animeLibraries];
+  $('anime-libraries').replaceChildren(
+    ...libraries.map(l => {
+      const box = Object.assign(el('input', ''), { type: 'checkbox', checked: animeKeys.includes(l.key) });
+      box.addEventListener('change', () => {
+        animeKeys = box.checked ? [...animeKeys, l.key] : animeKeys.filter(k => k !== l.key);
+      });
+      const label = el('label', 'check');
+      label.append(box, document.createTextNode(` ${l.name}`));
+      return label;
+    }),
+  );
+  if (!libraries.length)
+    $('anime-libraries').textContent = 'No show libraries yet: they appear after the first sync with Plex.';
+}
+
+async function loadRules() {
+  const { rules, showLibraries } = await api('/api/owner/rules');
+  showRules(rules, showLibraries);
+  $('rules-card').hidden = false;
+  return showLibraries;
+}
+
+$('rules-save').addEventListener('click', async () => {
+  for (const em of document.querySelectorAll('#rules-card em')) em.textContent = '';
+  const body = { animeLibraries: animeKeys };
+  for (const input of document.querySelectorAll('[data-rule]')) body[input.dataset.rule] = input.value;
+  const res = await fetch('/api/owner/rules', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json();
+  if (!res.ok) {
+    // Each wrong value gets its reason next to it.
+    for (const [key, why] of Object.entries(out.errors ?? {})) {
+      const input = document.querySelector(`[data-rule="${key}"], [data-error-key="${key}"]`);
+      const em = input?.parentElement?.querySelector('em') ?? document.querySelector(`[data-error="${key}"]`);
+      if (em) em.textContent = `Should be ${why}.`;
+    }
+    say($('rules-result'), out.errors ? 'Not saved: see the fields marked above' : out.error, false);
+    return;
+  }
+  say(
+    $('rules-result'),
+    out.queued ? `Saved. ${out.queued} Title${out.queued === 1 ? '' : 's'} reached the Review Queue.` : 'Saved',
+    true,
+  );
+});
+
 async function load() {
   const s = await api('/api/owner/settings');
   $('plex-name').textContent = s.plex?.name ?? '';
@@ -147,6 +201,6 @@ $('generate').addEventListener('click', async () => {
 });
 
 if (new URLSearchParams(location.search).get('welcome')) $('welcome').hidden = false;
-Promise.all([load(), api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey))]).catch(e =>
+Promise.all([load(), loadRules(), api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey))]).catch(e =>
   fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message),
 );

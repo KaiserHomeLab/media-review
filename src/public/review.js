@@ -73,7 +73,7 @@ function entry(e) {
       'review-queue',
       'remove',
       'Remove',
-      `Remove ${e.title.name}? It goes to Leaving Soon for 14 days, pinned in Plex for everyone, and only then is it deleted.`,
+      `Remove ${e.title.name}? It goes to Leaving Soon for ${leavingDays} days, pinned in Plex for everyone, and only then is it deleted.`,
       'btn small danger',
     ),
   );
@@ -152,7 +152,16 @@ async function loadLeaving() {
   if (!leavingSoon.length) $('leaving').append(el('li', 'empty', 'Nothing is Leaving Soon.'));
 }
 
-const loadAll = () => Promise.all([loadQueue(), loadLeaving()]);
+// The Leaving Soon length, for Remove's question (Settings → Rules).
+let leavingDays = 14;
+const loadAll = () =>
+  Promise.all([
+    loadQueue(),
+    loadLeaving(),
+    api('/api/owner/rules')
+      .then(r => (leavingDays = r.rules.leavingSoonDays))
+      .catch(() => {}),
+  ]);
 
 async function loadQueue() {
   const { reviewQueue } = await api('/api/owner/review-queue');

@@ -104,7 +104,7 @@ test('a shared account signs in as a Voter, and the Owner is not a Voter', async
     plexId: 'a',
     username: 'alice',
     isOwner: false,
-    sampleMinutes: { movie: 30, show: 10 },
+    sampleMinutes: { movie: 30, show: 10, anime: 10 },
   });
   const owner = await signIn(1);
   assert.equal((await (await req('/api/me', { cookie: owner.cookie })).json()).isOwner, true);
@@ -288,9 +288,9 @@ test('Titles are grouped by their Plex library, so Voters can browse Movies, TV 
   const get = async (/** @type {string} */ p) => (await req(p, { cookie: alice })).json();
 
   assert.deepEqual((await get('/api/libraries')).libraries, [
-    { name: 'Movies', kind: 'movie', count: 1 },
-    { name: 'TV Shows', kind: 'show', count: 1 },
-    { name: 'Anime', kind: 'show', count: 2 },
+    { name: 'Movies', kind: 'movie', count: 1, key: null },
+    { name: 'TV Shows', kind: 'show', count: 1, key: null },
+    { name: 'Anime', kind: 'show', count: 2, key: null },
   ]);
   const anime = (await get('/api/titles?library=Anime')).titles;
   assert.deepEqual(
