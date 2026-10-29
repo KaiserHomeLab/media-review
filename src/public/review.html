@@ -28,18 +28,18 @@
     <main>
       <p class="notice error" id="error" hidden></p>
 
-      <section class="card" id="queue-card" hidden>
-        <h2>Review Queue <span class="count" id="queue-count"></span></h2>
+      <section class="card kind-downvote" id="queue-card" hidden>
+        <h2><span class="kind-badge" aria-hidden="true">▼</span>Review Queue: Downvotes <span class="count" id="queue-count"></span><span class="kind-sub">Friends want these gone: Keep or Remove</span></h2>
         <ul class="queue" id="queue"></ul>
       </section>
 
-      <section class="card" id="problems-card" hidden>
-        <h2>Problem Reports <span class="count" id="problems-count"></span></h2>
+      <section class="card kind-problem" id="problems-card" hidden>
+        <h2><span class="kind-badge" aria-hidden="true">⚑</span>Problem Reports <span class="count" id="problems-count"></span><span class="kind-sub">A copy is broken or poor: fix it, then Resolve, or Close</span></h2>
         <ul class="queue" id="problems"></ul>
       </section>
 
-      <section class="card" id="leaving-card" hidden>
-        <h2>Leaving Soon <span class="count" id="leaving-count"></span></h2>
+      <section class="card kind-leaving" id="leaving-card" hidden>
+        <h2><span class="kind-badge" aria-hidden="true">⏳</span>Leaving Soon <span class="count" id="leaving-count"></span><span class="kind-sub">Removed: deleted overnight when the days run out</span></h2>
         <ul class="queue" id="leaving"></ul>
       </section>
 

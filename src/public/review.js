@@ -42,6 +42,7 @@ function entry(e) {
   if (e.title.year) head.append(el('span', 'muted', ` (${e.title.year})`));
   const chips = el('div', 'meta');
   chips.append(el('span', 'chip', e.title.library ?? (e.title.kind === 'show' ? 'Show' : 'Movie')));
+  chips.append(el('span', 'chip kind', `▼ ${e.downvotes.length} Downvote${e.downvotes.length === 1 ? '' : 's'}`));
   if (e.sentBack) chips.append(el('span', 'chip review', 'Sent back by Objections'));
   if (e.history.some(h => h.decision === 'keep')) {
     const kept = e.history.filter(h => h.decision === 'keep').length;
@@ -124,7 +125,7 @@ function leavingEntry(l) {
   if (l.year) head.append(el('span', 'muted', ` (${l.year})`));
   const chips = el('div', 'meta');
   chips.append(el('span', 'chip', l.library ?? (l.kind === 'show' ? 'Show' : 'Movie')));
-  chips.append(el('span', 'chip review', leavingText(l.daysLeft)));
+  chips.append(el('span', 'chip kind', `⏳ ${leavingText(l.daysLeft)}`));
   main.append(
     head,
     chips,
@@ -171,7 +172,7 @@ function problemEntry(r) {
   if (r.title.year) head.append(el('span', 'muted', ` (${r.title.year})`));
   const chips = el('div', 'meta');
   chips.append(el('span', 'chip', r.title.library ?? (r.title.kind === 'show' ? 'Show' : 'Movie')));
-  chips.append(el('span', 'chip review', r.reasonLabel));
+  chips.append(el('span', 'chip kind', `⚑ ${r.reasonLabel}`));
   if (r.part) chips.append(el('span', 'chip', r.part));
   else if (r.title.kind === 'show') chips.append(el('span', 'chip', 'Whole show'));
   main.append(head, chips);
