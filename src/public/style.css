@@ -555,6 +555,38 @@ code {
   text-decoration: underline;
 }
 
+.sub-h {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 6px 0 -4px;
+}
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.field em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--critical);
+}
+.field em:empty {
+  display: none;
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 14px;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
 /* ------------------------------------------------------------------ owner: API key */
 .panel {
   max-width: 640px;

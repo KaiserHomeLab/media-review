@@ -7,9 +7,11 @@
 
 /**
  * @typedef {'movie' | 'show'} Kind
- * @typedef {{ sampleMovieMinutes: number, sampleShowMinutes: number, minimumAudience: number,
- *   downvoteShare: number, baseWeightDays: number, titleBonus: number, leavingSoonDays: number,
- *   deleteHour: number }} Settings
+ * @typedef {Kind | 'anime'} SampleKind how long a Sample takes: anime is a show in an anime library
+ * @typedef {{ sampleMovieMinutes: number, sampleShowMinutes: number, sampleAnimeMinutes: number,
+ *   animeLibraries: string[], minimumAudience: number, downvoteShare: number, baseWeightDays: number,
+ *   titleBonus: number, leavingSoonDays: number, deleteHour: number }} Settings
+ *   animeLibraries: the Plex library section ids the Owner marked as anime
  * @typedef {{ seconds: number, watched: boolean }} Play
  * @typedef {{ id: string, baseWeight: number, sampled: boolean }} Voter
  */
@@ -18,6 +20,8 @@
 const DEFAULTS = {
   sampleMovieMinutes: 30,
   sampleShowMinutes: 10,
+  sampleAnimeMinutes: 10,
+  animeLibraries: [],
   minimumAudience: 3,
   downvoteShare: 0.5,
   baseWeightDays: 90,
@@ -26,11 +30,22 @@ const DEFAULTS = {
   deleteHour: 4, // overnight, server time: Leaving Soon ends then, and deletions run then
 };
 
+// Which Sample length a Title uses: anime is a show in a library the Owner marked as anime.
+/** @param {{ kind: Kind, library_key?: string | null }} title @param {Settings} s @returns {SampleKind} */
+const sampleKind = (title, s) =>
+  title.kind === 'show' && title.library_key != null && s.animeLibraries.includes(title.library_key)
+    ? 'anime'
+    : title.kind;
+
+/** @param {SampleKind} kind @param {Settings} s */
+const sampleMinutes = (kind, s) =>
+  kind === 'movie' ? s.sampleMovieMinutes : kind === 'anime' ? s.sampleAnimeMinutes : s.sampleShowMinutes;
+
 // A Sample: play time on the Title adds up to the Sample length for its kind, or any play is a Watch.
-/** @param {Kind} kind @param {Play[]} plays @param {Settings} s */
+/** @param {SampleKind} kind @param {Play[]} plays @param {Settings} s */
 function hasSampled(kind, plays, s) {
   if (plays.some(p => p.watched)) return true;
-  const minutes = kind === 'movie' ? s.sampleMovieMinutes : s.sampleShowMinutes;
+  const minutes = sampleMinutes(kind, s);
   return plays.reduce((sum, p) => sum + p.seconds, 0) >= minutes * 60;
 }
 
@@ -73,4 +88,14 @@ const inQuietWindow = (t, hour) => {
   return h >= hour && h < hour + 3;
 };
 
-module.exports = { DEFAULTS, hasSampled, baseWeights, voteWeight, checkThreshold, quietTime, inQuietWindow };
+module.exports = {
+  DEFAULTS,
+  sampleKind,
+  sampleMinutes,
+  hasSampled,
+  baseWeights,
+  voteWeight,
+  checkThreshold,
+  quietTime,
+  inQuietWindow,
+};

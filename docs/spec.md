@@ -133,7 +133,8 @@ All of these are editable by the Owner. Defaults:
 | Setting | Default |
 |---|---|
 | Sample, movies | 30 minutes, cumulative across sessions (any Watch also counts) |
-| Sample, TV and anime | 10 minutes, cumulative across episodes and sessions (any Watch also counts) |
+| Sample, TV | 10 minutes, cumulative across episodes and sessions (any Watch also counts) |
+| Sample, anime | 10 minutes, the same way, for shows in the Plex libraries the Owner marks as anime |
 | Minimum Audience | 3 Voters |
 | Downvote share to reach the queue | 50% of the Audience's Vote Weight |
 | Base Weight window | last 90 days of watching |
@@ -141,8 +142,9 @@ All of these are editable by the Owner. Defaults:
 | Title Bonus | +2 for a Voter who has Sampled the Title |
 | Objection bar | 2 weight (fixed, independent of Audience) |
 | Leaving Soon length | 14 days |
+| Deletion hour | 04:00 server time; deletions run for three hours from it |
 
-Changing a setting re-runs the threshold check for every Title that isn't queued. It never takes a Title out of the queue.
+Changing a setting re-runs the threshold check for every Title that isn't queued. It never takes a Title out of the queue. A new Leaving Soon length or deletion hour applies from the next Remove; Titles already Leaving Soon keep their date. The Objection bar is added with Objections (0006).
 
 ## Open questions
 

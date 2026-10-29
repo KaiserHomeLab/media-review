@@ -12,7 +12,7 @@ const crypto = require('node:crypto');
 const { openStore } = require('./lib/store');
 const { plex: plexClient } = require('./lib/plex');
 const { tautulli: tautulliClient } = require('./lib/tautulli');
-const { DEFAULTS } = require('./lib/rules');
+const { ruleSettings } = require('./lib/rule-settings');
 const { sync } = require('./lib/sync');
 const { createApp } = require('./lib/web');
 const { syncLeavingSoon } = require('./lib/collections');
@@ -30,6 +30,9 @@ let clientId = store.getSetting('plexClientId');
 if (!clientId) store.setSetting('plexClientId', (clientId = crypto.randomUUID()));
 
 const apps = appSettings(store);
+// The Owner's rules (Settings → Rules) over the defaults; `settings` is read live, so saving applies at once.
+const rules = ruleSettings(store);
+const settings = rules.values;
 
 // Clients read their address and key from Settings on every call, so a change applies straight away.
 const plex = plexClient({
@@ -100,12 +103,13 @@ const app = createApp({
   store,
   plex,
   machineId,
-  settings: DEFAULTS,
+  settings,
   now,
   log,
   publicDir: path.join(__dirname, 'public'),
   leavingChanged: () => void updateCollections(),
   apps,
+  rules,
   setupCode: () => setupCode,
   setupDone: () => {
     setupCode = null;
@@ -123,9 +127,9 @@ const runSync = async () => {
   running = true;
   try {
     if (!apps.isSetUp()) return; // nothing to sync until Plex is linked
-    await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings: DEFAULTS, now, log });
+    await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings, now, log });
     // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up.
-    await runDeletions({ store, arrs: arrsFrom(apps), settings: DEFAULTS, now, log });
+    await runDeletions({ store, arrs: arrsFrom(apps), settings, now, log });
     await updateCollections();
   } finally {
     running = false;

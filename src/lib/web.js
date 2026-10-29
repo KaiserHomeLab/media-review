@@ -8,8 +8,19 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
-const { castDownvote, withdrawDownvote, keep, remove, leavingSoon, sampledBy, reviewQueue } = require('./review');
+const {
+  castDownvote,
+  withdrawDownvote,
+  keep,
+  remove,
+  leavingSoon,
+  sampledBy,
+  reviewQueue,
+  evaluateAll,
+} = require('./review');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
+const { sampleKind, sampleMinutes } = require('./rules');
+const { toForm, fromForm } = require('./rule-settings');
 const { fetchJson, join } = require('./http');
 
 const SESSION_DAYS = 30;
@@ -51,7 +62,9 @@ async function readJson(req) {
  *   machineId: () => Promise<string>, settings: import('./rules').Settings, now: () => number,
  *   log: (msg: string) => void, publicDir: string, publicUrl?: string,
  *   leavingChanged?: () => void, apps: import('./apps').AppSettings, setupCode?: () => string | null,
- *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch }} ctx
+ *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch,
+ *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings> }} ctx
+ *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
  *   setupCode: the one-time code printed in the log until first setup is done
  */
 function createApp({
@@ -70,6 +83,7 @@ function createApp({
   appsChanged = () => {},
   probe = probeApp,
   fetch: f = fetch,
+  rules,
 }) {
   // The public address: from the container (tests) or the Settings page, read fresh each time.
   const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
@@ -313,6 +327,23 @@ function createApp({
     return json(res, 404, { error: 'not found' });
   }
 
+  // ------------------------------------------------------------------ the rules (Settings → Rules)
+  // Saving re-checks every Title that isn't queued, so a lower bar can queue some straight away. Nothing
+  // already queued is taken out. A new Leaving Soon length or deletion hour applies from the next Remove.
+  /** @param {Req} req @param {Res} res @param {string | undefined} m */
+  async function rulesRoute(req, res, m) {
+    if (m === 'GET') {
+      const shows = store.libraries().filter(l => l.kind === 'show' && l.key);
+      return json(res, 200, { rules: toForm(settings), showLibraries: shows.map(l => ({ key: l.key, name: l.name })) });
+    }
+    if (m !== 'PUT' || !rules) return json(res, 404, { error: 'not found' });
+    const r = rules.save(fromForm(await readJson(req)));
+    if (!r.ok) return json(res, 400, { error: 'some values are not right', errors: r.errors });
+    const queued = evaluateAll(store, settings, now());
+    log(`settings: rules saved${queued.length ? `; ${queued.length} Title(s) reached the Review Queue` : ''}`);
+    return json(res, 200, { saved: true, queued: queued.length, rules: toForm(settings) });
+  }
+
   // ------------------------------------------------------------------ routes
   /** @param {Req} req @param {Res} res @param {URL} url */
   async function route(req, res, url) {
@@ -367,7 +398,11 @@ function createApp({
         plexId: s.plexId,
         username: v?.username ?? 'Owner',
         isOwner: s.isOwner,
-        sampleMinutes: { movie: settings.sampleMovieMinutes, show: settings.sampleShowMinutes },
+        sampleMinutes: {
+          movie: settings.sampleMovieMinutes,
+          show: settings.sampleShowMinutes,
+          anime: settings.sampleAnimeMinutes,
+        },
       });
     }
     if (m === 'POST' && p === '/api/logout') {
@@ -403,6 +438,7 @@ function createApp({
         poster: t.thumb ? `/poster/${encodeURIComponent(t.rating_key)}` : null,
         downvoted: mine.has(t.rating_key), // a Voter sees only their own Downvotes
         sampled: sampled(t), // their Downvote only counts once this is true
+        sampleMinutes: sampleMinutes(sampleKind(t, settings), settings),
         inReview: store.isQueued(t.rating_key),
         leavingInDays: leaving.get(t.rating_key) ?? null,
       }));
@@ -436,6 +472,7 @@ function createApp({
     if (p.startsWith('/api/owner/')) {
       const handled = decisions(res, m, p.slice('/api/owner'.length), 'Media Review');
       if (handled) return handled;
+      if (p === '/api/owner/rules') return rulesRoute(req, res, m);
       if (p === '/api/owner/settings' || p.startsWith('/api/owner/settings/'))
         return settingsRoute(req, res, m, p.slice('/api/owner/settings'.length));
     }

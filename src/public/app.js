@@ -54,7 +54,7 @@ function card(t) {
   // A Downvote only counts once the Voter has given the Title a real try (a Sample), so say so.
   const leaving = t.leavingInDays != null;
   const untried = !t.sampled && !t.inReview && !leaving && !me.isOwner;
-  const tryNote = () => el('div', 'note', `Counts once you've watched ${me.sampleMinutes[t.kind]} minutes of it.`);
+  const tryNote = () => el('div', 'note', `Counts once you've watched ${t.sampleMinutes} minutes of it.`);
 
   // Downvote, or Withdraw it again, until the Title is with the Owner.
   const action = (/** @type {'downvote' | 'withdraw'} */ what) => {

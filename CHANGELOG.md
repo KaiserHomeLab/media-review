@@ -28,3 +28,6 @@ number, a fix the last one.
 - First setup in the web app: a one-time code from the log, then Plex sign-in as the server's owner,
   picking the server. A Settings page for the Owner: Plex, Tautulli, Radarr and Sonarrs (address, API
   key, Test, Save), the public address, and the Media Ops key. Apps are no longer container variables.
+- Settings → Rules: every rule, with a reason next to any value that isn't right. Anime gets its own
+  Sample length, for the Plex libraries the Owner ticks as anime. Saving checks every Title again, so
+  a lower bar can queue some at once; nothing already queued is taken out.

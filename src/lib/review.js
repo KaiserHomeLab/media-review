@@ -4,7 +4,7 @@
 // Applies the rules to what the store holds: casting a Downvote, checking a Title against the
 // threshold, and building the Review Queue that Media Ops shows.
 'use strict';
-const { hasSampled, baseWeights, voteWeight, checkThreshold, quietTime } = require('./rules');
+const { hasSampled, sampleKind, baseWeights, voteWeight, checkThreshold, quietTime } = require('./rules');
 
 /** @typedef {import('./rules').Settings} Settings @typedef {import('./store').Store} Store */
 
@@ -33,7 +33,7 @@ function evaluate(store, s, titleKey, now, bases = currentBaseWeights(store, s, 
   const voters = [...ids].map(id => ({
     id,
     baseWeight: bases.get(id) ?? 0,
-    sampled: hasSampled(title.kind, playsByVoter.get(id) ?? [], s),
+    sampled: hasSampled(sampleKind(title, s), playsByVoter.get(id) ?? [], s),
   }));
 
   const result = checkThreshold(voters, new Set(downvotes.map(d => d.voter_id)), s);
@@ -140,8 +140,8 @@ function leavingSoon(store, now, opts = {}) {
 /** @param {Store} store @param {Settings} s @param {string} voterId */
 function sampledBy(store, s, voterId) {
   const plays = store.playsBy(voterId);
-  return (/** @type {{ rating_key: string, kind: 'movie' | 'show' }} */ t) =>
-    hasSampled(t.kind, plays.get(t.rating_key) ?? [], s);
+  return (/** @type {{ rating_key: string, kind: 'movie' | 'show', library_key?: string | null }} */ t) =>
+    hasSampled(sampleKind(t, s), plays.get(t.rating_key) ?? [], s);
 }
 
 // What Media Ops shows. Only the Owner reaches this (through the API key), so it names each Voter.
