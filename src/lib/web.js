@@ -184,7 +184,10 @@ function createApp({
     }
     const isOwner = account.access === 'owner';
     // The Owner decides; only people the server is shared with are Voters.
-    if (!isOwner) store.upsertVoter(account);
+    if (!isOwner) {
+      store.upsertVoter(account);
+      store.setRemoved(account.plexId, null); // plex.tv just said they have access
+    }
     const session = crypto.randomBytes(32).toString('base64url');
     store.addSession(session, account.plexId, isOwner, now());
     redirect(res, '/', [clearPin, cookie(req, 'mr_session', session, SESSION_DAYS * 86400)]);

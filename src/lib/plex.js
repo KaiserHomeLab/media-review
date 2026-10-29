@@ -19,6 +19,26 @@ function externalIds(guids) {
 }
 const PRODUCT = 'Media Review';
 
+// The attributes of every <tag ...> in a piece of plex.tv's XML (it has no JSON form for this list).
+/** @param {string} xml @param {string} tag @returns {Array<{ attrs: Record<string, string>, body: string }>} */
+function xmlItems(xml, tag) {
+  const out = [];
+  const re = new RegExp(`<${tag}\\b([^>]*?)(/>|>([\\s\\S]*?)</${tag}>)`, 'g');
+  for (const m of xml.matchAll(re)) {
+    /** @type {Record<string, string>} */
+    const attrs = {};
+    for (const a of m[1].matchAll(/([\w:-]+)="([^"]*)"/g))
+      attrs[a[1]] = a[2]
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&');
+    out.push({ attrs, body: m[3] ?? '' });
+  }
+  return out;
+}
+
 /** @param {{ url: string, token: string, clientId: string, fetch?: Fetch, plexTv?: string }} cfg */
 function plex(cfg) {
   const f = cfg.fetch ?? fetch;
@@ -107,6 +127,31 @@ function plex(cfg) {
             .filter(c => !c.relay && c.uri)
             .map(c => ({ url: String(c.uri), local: !!c.local })),
         }));
+    },
+
+    // Who the Owner's server is shared with now: plex.tv's list of the Owner's friends (/api/users), each with
+    // the servers shared with them, as python-plexapi reads it. Someone in the Owner's Plex Home has access
+    // through the Home. Throws when plex.tv can't be asked, so a failure never looks like "nobody".
+    /** @param {string} machineId @returns {Promise<Set<string>>} the Plex account ids that have access */
+    async sharedWith(machineId) {
+      let res;
+      try {
+        res = await f(`${tv}/api/users/`, { headers: tvHeaders(cfg.token), signal: AbortSignal.timeout(15000) });
+      } catch (e) {
+        throw new Error(`couldn't reach plex.tv (${e?.cause?.message ?? e.message})`, { cause: e });
+      }
+      if (!res.ok) throw new Error(`plex.tv answered HTTP ${res.status}`);
+      const xml = await res.text();
+      if (!/<MediaContainer\b/.test(xml))
+        throw new Error("plex.tv's list of friends wasn't what Media Review expected");
+      const ids = new Set();
+      for (const u of xmlItems(xml, 'User')) {
+        const shared = xmlItems(u.body, 'Server').some(
+          s => s.attrs.machineIdentifier === machineId && s.attrs.pending !== '1',
+        );
+        if (u.attrs.id && (shared || u.attrs.home === '1')) ids.add(String(u.attrs.id));
+      }
+      return ids;
     },
 
     // ---------------------------------------------------------------- the Owner's server
@@ -223,4 +268,4 @@ function plex(cfg) {
   };
 }
 
-module.exports = { plex };
+module.exports = { plex, xmlItems };
