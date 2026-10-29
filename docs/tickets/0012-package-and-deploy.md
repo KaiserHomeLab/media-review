@@ -7,10 +7,10 @@
 ## What to build
 
 - A Docker image for Media Review with its data on a mounted volume.
-- Configuration for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord keys, through environment variables or the settings page.
+- Configuration for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord keys, on the Settings page (kept in `/config`).
 - Deploy it on the Owner's Unraid server, on the custom network Plex and Tautulli use, so it reaches them by name.
 - Published to GHCR by CI (like Media Ops), installed with an Unraid template.
-- Friends reach it through the Owner's Cloudflare Tunnel: a public hostname pointing at `http://media-review:8485`, with `PUBLIC_URL` set to it.
+- Friends reach it through the Owner's Cloudflare Tunnel: a public hostname pointing at `http://media-review:8485`, entered under Settings → Public address.
 - Check Q3 against the real Tautulli: the play durations and Watches Media Review stores match Tautulli's history for a few Voters.
 
 ## Acceptance criteria
@@ -19,3 +19,20 @@
 - [ ] Media Review reaches Plex, Tautulli, Sonarr, Radarr and Seerr from inside the container, and still does after a host reboot.
 - [ ] Media Ops reaches the API at the configured address.
 - [ ] Logs are size-limited.
+
+## Checklist
+
+The Owner works through a step-by-step checklist, with a check after each step:
+
+1. Look at the networks.
+2. Install from the template.
+3. First setup.
+4. The apps.
+5. Q3 against Tautulli.
+6. The Cloudflare Tunnel.
+7. Media Ops.
+8. Discord.
+9. The whole loop, done safely.
+10. Re-create and reboot.
+
+It's published privately to the Owner at https://claude.ai/artifact/UUXSAYx3oZjbQEegb95Jew. Anything that doesn't match a check comes back here, with the step number, the log tail and any red tile's text.
