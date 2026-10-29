@@ -81,7 +81,7 @@ function card(t) {
     const btn = el(
       'button',
       what === 'downvote' ? 'btn small' : 'btn small ghost',
-      what === 'downvote' ? '▼ Downvote' : 'Withdraw',
+      what === 'downvote' ? (me.egg?.founder ? '▼ Downvote (the original)' : '▼ Downvote') : 'Withdraw',
     );
     btn.type = 'button';
     btn.addEventListener('click', async () => {
@@ -471,6 +471,89 @@ async function loadAsks() {
   );
 }
 
+// ------------------------------------------------------------------ a thank-you
+// For the friend who made us build this: a badge by their name, and once a year a welcome with confetti.
+// Clicking the badge shows the welcome again.
+/** @param {boolean} welcome */
+function founder(welcome) {
+  const badge = el('button', 'chip founder', '★ Inspired this app');
+  badge.type = 'button';
+  badge.title = 'Media Review exists because of you. Thank you.';
+  // It sits inside the header's home link: show the welcome instead of going home.
+  badge.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    welcomeBanner();
+  });
+  $('who').append(' ', badge);
+  if (!welcome) return;
+  welcomeBanner();
+  api('/api/me/welcomed', { method: 'POST', body: '{}' }).catch(() => {});
+}
+
+const CONFETTI = ['#e5a00d', '#d95926', '#199e70', '#4a90e2', '#9b7fe6', '#f4f3ee'];
+function welcomeBanner() {
+  document.querySelector('.founder-welcome')?.remove();
+  const box = el('div', 'founder-welcome');
+  box.setAttribute('role', 'status');
+  const close = el('button', 'icon-btn', '✕');
+  Object.assign(close, { type: 'button', ariaLabel: 'Close' });
+  close.addEventListener('click', () => box.remove());
+  box.append(
+    el('b', '', `This whole thing exists because of you, ${me.username}.`),
+    el('span', '', 'Every Downvote, every Leaving Soon, all of it started with you. Thank you. ★'),
+    close,
+  );
+  // With reduced motion the confetti stays put, sprinkled over the banner; otherwise it falls across the page.
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rain = el('div', still ? 'confetti still' : 'confetti');
+  rain.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < (still ? 28 : 90); i++) {
+    const bit = el('i', '');
+    bit.style.left = `${Math.random() * 100}%`;
+    bit.style.background = CONFETTI[i % CONFETTI.length];
+    if (still) {
+      bit.style.top = `${Math.random() * 100}%`;
+      bit.style.transform = `rotate(${Math.round(Math.random() * 180)}deg)`;
+    } else {
+      bit.style.animationDelay = `${Math.random() * 0.8}s`;
+      bit.style.animationDuration = `${2.4 + Math.random() * 1.8}s`;
+      bit.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * 180)}px`);
+      bit.style.setProperty('--spin', `${Math.round((Math.random() - 0.5) * 1440)}deg`);
+    }
+    rain.append(bit);
+  }
+  if (still) box.append(rain);
+  else {
+    document.body.append(rain);
+    setTimeout(() => rain.remove(), 5000);
+  }
+  document.querySelector('main')?.prepend(box);
+}
+
+// ------------------------------------------------------------------ quack
+// Type "quack" in the search box: a rubber duck waddles across the bottom of the page. For our rubber duck.
+const isQuack = (/** @type {string} */ q) => q.trim().toLowerCase() === 'quack';
+const DUCK = `<svg viewBox="0 0 64 56" width="64" height="56" aria-hidden="true">
+  <ellipse cx="30" cy="38" rx="22" ry="14" fill="#f5c518"/>
+  <path d="M10 34 q-6 -10 4 -12 q2 6 -4 12z" fill="#f5c518"/>
+  <circle cx="44" cy="20" r="11" fill="#f5c518"/>
+  <path d="M53 19 l10 3 l-10 4 z" fill="#f08a1c"/>
+  <circle cx="47" cy="17" r="2" fill="#1a1a19"/>
+  <path d="M22 36 q8 8 18 0" fill="none" stroke="#d9a90f" stroke-width="2.5" stroke-linecap="round"/>
+</svg>`;
+function duck() {
+  if (document.querySelector('.duck')) return;
+  const d = el('div', 'duck');
+  d.setAttribute('role', 'status');
+  const body = el('div', 'duck-body');
+  body.innerHTML = DUCK;
+  d.append(el('div', 'duck-say', 'Thanks, you know who you are!'), body);
+  document.body.append(d);
+  // It walks across in 7 seconds; with reduced motion it just sits in the corner for a moment.
+  setTimeout(() => d.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 4000 : 7200);
+}
+
 // ------------------------------------------------------------------ Discord
 // Whether this account's Discord is connected, and Disconnect. Connecting starts in Discord, with /link.
 async function loadDiscord() {
@@ -660,6 +743,7 @@ async function start() {
     if (sessionStorage.getItem('media-review:discord-link')) return location.replace('/link.html');
   } catch {}
   $('who').textContent = me.isOwner ? `${me.username} · Owner` : me.username;
+  if (me.egg?.founder) founder(me.egg.welcome);
   $('logout').hidden = false;
   $('owner-link').hidden = !me.isOwner;
   $('settings-link').hidden = !me.isOwner;
@@ -676,7 +760,9 @@ async function start() {
   $('search').addEventListener('input', e => {
     clearTimeout(timer);
     timer = setTimeout(() => {
+      const was = query;
       query = /** @type {HTMLInputElement} */ (e.target).value;
+      if (isQuack(query) && !isQuack(was)) duck();
       load();
     }, 200);
   });

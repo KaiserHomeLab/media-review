@@ -980,3 +980,139 @@ code {
   letter-spacing: 0;
   text-transform: none;
 }
+
+/* ------------------------------------------------------------------ a thank-you (see founder() in app.js) */
+.chip.founder {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.founder-welcome {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: start;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+}
+.founder-welcome b {
+  font-size: 16px;
+}
+.founder-welcome span {
+  grid-column: 1;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.founder-welcome .icon-btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 50;
+}
+.confetti i {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  to {
+    transform: translate(var(--drift), 105vh) rotate(var(--spin));
+    opacity: 0.6;
+  }
+}
+/* Reduced motion: still confetti, inside the banner. */
+.founder-welcome {
+  position: relative;
+  overflow: hidden;
+}
+.founder-welcome > b,
+.founder-welcome > span,
+.founder-welcome > .icon-btn {
+  position: relative;
+  z-index: 1;
+}
+.confetti.still {
+  position: absolute;
+  z-index: 0;
+}
+.confetti.still i {
+  top: auto;
+  width: 6px;
+  height: 9px;
+  opacity: 0.55;
+  animation: none;
+}
+button.chip.founder {
+  font: 11px var(--mono);
+  cursor: pointer;
+}
+button.chip.founder:hover,
+button.chip.founder:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* quack (see duck() in app.js): a duck waddles along the bottom, left to right. */
+.duck {
+  position: fixed;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  left: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  animation: duck-walk 7s linear forwards;
+}
+.duck-body {
+  animation: duck-waddle 0.45s ease-in-out infinite alternate;
+  transform-origin: 50% 100%;
+}
+.duck-say {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: 1px solid var(--line);
+}
+@keyframes duck-walk {
+  from {
+    transform: translateX(-140px);
+  }
+  to {
+    transform: translateX(calc(100vw + 40px));
+  }
+}
+@keyframes duck-waddle {
+  from {
+    transform: rotate(-7deg) translateY(0);
+  }
+  to {
+    transform: rotate(7deg) translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .duck,
+  .duck-body {
+    animation: none;
+  }
+  .duck {
+    left: auto;
+    right: max(16px, env(safe-area-inset-right, 0px));
+  }
+}
