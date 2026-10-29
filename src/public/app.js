@@ -17,6 +17,10 @@ const ERRORS = {
   leaving: "This is already Leaving Soon, so it can't be Downvoted.",
   'unknown-title': 'That title is no longer in the library.',
   'not-downvoted': "You hadn't Downvoted this.",
+  downvoted: "You Downvoted this, so you can't also object to it going.",
+  'objections-closed': 'This was sent back once already, so it takes no Objections this time.',
+  'already-objected': 'You already objected to this.',
+  'not-leaving': 'This is no longer Leaving Soon.',
 };
 
 async function api(path, opts = {}) {
@@ -27,8 +31,15 @@ async function api(path, opts = {}) {
 }
 
 function showError(msg) {
+  $('error').className = 'notice error';
   $('error').textContent = msg;
   $('error').hidden = !msg;
+}
+
+// A plain message in the same place, e.g. after a send-back.
+function showNotice(msg) {
+  showError(msg);
+  $('error').className = 'notice';
 }
 
 let me = null;
@@ -81,8 +92,44 @@ function card(t) {
     return btn;
   };
 
+  // Object to it going, or take that back, while it's Leaving Soon.
+  const objection = (/** @type {'object' | 'unobject'} */ what) => {
+    const btn = el(
+      'button',
+      what === 'object' ? 'btn small' : 'btn small ghost',
+      what === 'object' ? '▲ Object: keep it' : 'Withdraw Objection',
+    );
+    btn.type = 'button';
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      showError('');
+      try {
+        const r = await api(`/api/titles/${encodeURIComponent(t.ratingKey)}/${what}`, { method: 'POST', body: '{}' });
+        t.objected = what === 'object';
+        if (r.sentBack) {
+          // Enough Objections: it's back with the Owner, and no longer Leaving Soon.
+          Object.assign(t, { leavingInDays: null, inReview: true, objected: false });
+          showNotice('Sent back: the Owner will look at it again.');
+        }
+      } catch (e) {
+        showError(ERRORS[e.message] ?? e.message);
+        if (e.message === 'already-objected') t.objected = true;
+        if (e.message === 'objections-closed') t.objectionsOpen = false;
+      }
+      li.replaceWith(card(t));
+    });
+    return btn;
+  };
+
   const acts = el('div', 'acts');
-  if (leaving) acts.append(el('div', 'state', 'Watch it before it goes'));
+  if (leaving && !me.isOwner) {
+    // An Objection asks the Owner to look again; it weighs what this Voter's Downvote would.
+    if (t.downvoted) acts.append(el('div', 'state', 'You Downvoted this'));
+    else if (t.objected) acts.append(el('div', 'state', 'You objected to this'), objection('unobject'));
+    else if (t.objectionsOpen)
+      acts.append(objection('object'), el('div', 'note', 'Asks the Owner to look again before it goes.'));
+    else acts.append(el('div', 'note', 'Sent back once already: no Objections this time.'));
+  } else if (leaving) acts.append(el('div', 'state', 'Watch it before it goes'));
   else if (t.inReview) acts.append(el('div', 'state', 'With the Owner for review'));
   else if (me.isOwner) {
     // the Owner only looks

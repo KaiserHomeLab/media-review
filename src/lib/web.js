@@ -11,6 +11,8 @@ const { Readable } = require('node:stream');
 const {
   castDownvote,
   withdrawDownvote,
+  object,
+  withdrawObjection,
   keep,
   remove,
   leavingSoon,
@@ -418,10 +420,13 @@ function createApp({
 
     if (m === 'GET' && p === '/api/titles') {
       const mine = store.downvotedBy(s.plexId);
+      const objected = store.objectedBy(s.plexId);
       const sampled = sampledBy(store, settings, s.plexId);
       const q = (url.searchParams.get('q') ?? '').slice(0, 100);
       const library = url.searchParams.get('library') || undefined;
-      const leaving = new Map(leavingSoon(store, now()).map(l => [l.ratingKey, l.daysLeft]));
+      const leavingList = leavingSoon(store, now());
+      const leaving = new Map(leavingList.map(l => [l.ratingKey, l.daysLeft]));
+      const leavingOpen = new Map(leavingList.map(l => [l.ratingKey, l.objectionsOpen]));
       // ?leaving=1: only what's Leaving Soon, soonest first (the library's Leaving Soon tab).
       const rows =
         url.searchParams.get('leaving') === '1'
@@ -441,8 +446,28 @@ function createApp({
         sampleMinutes: sampleMinutes(sampleKind(t, settings), settings),
         inReview: store.isQueued(t.rating_key),
         leavingInDays: leaving.get(t.rating_key) ?? null,
+        objected: objected.has(t.rating_key), // only ever their own
+        objectionsOpen: leavingOpen.get(t.rating_key) ?? false,
       }));
       return json(res, 200, { titles });
+    }
+
+    // Objections: "send it back to the Owner", while a Title is Leaving Soon.
+    const ob = p.match(/^\/api\/titles\/([^/]+)\/(object|unobject)$/);
+    if (m === 'POST' && ob) {
+      if (s.isOwner) return json(res, 403, { error: 'The Owner decides directly: Keep after all.' });
+      const key = decodeURIComponent(ob[1]);
+      if (ob[2] === 'unobject') {
+        const r = withdrawObjection(store, s.plexId, key);
+        return r.ok ? json(res, 200, { objected: false }) : json(res, 409, { error: r.error });
+      }
+      const r = object(store, settings, s.plexId, key, now());
+      if (!r.ok) return json(res, 409, { error: r.error });
+      if (r.sentBack) {
+        log(`Sent back by Objections: ${store.title(key)?.title ?? key}`);
+        leavingChanged(); // out of Plex's Leaving Soon collection now
+      }
+      return json(res, 200, { objected: true, sentBack: r.sentBack });
     }
 
     const wd = p.match(/^\/api\/titles\/([^/]+)\/withdraw$/);
@@ -499,7 +524,7 @@ function createApp({
   function decisions(res, m, sub, via) {
     if (m === 'GET' && sub === '/review-queue') return json(res, 200, { reviewQueue: reviewQueue(store) });
     if (m === 'GET' && sub === '/leaving-soon')
-      return json(res, 200, { leavingSoon: leavingSoon(store, now(), { owner: true }) });
+      return json(res, 200, { leavingSoon: leavingSoon(store, now(), { owner: true, settings }) });
     const d = sub.match(/^\/(review-queue|leaving-soon)\/([^/]+)\/(keep|remove)$/);
     if (m !== 'POST' || !d || (d[1] === 'leaving-soon' && d[3] !== 'keep')) return null;
     const key = decodeURIComponent(d[2]);

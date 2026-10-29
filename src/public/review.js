@@ -42,6 +42,7 @@ function entry(e) {
   if (e.title.year) head.append(el('span', 'muted', ` (${e.title.year})`));
   const chips = el('div', 'meta');
   chips.append(el('span', 'chip', e.title.library ?? (e.title.kind === 'show' ? 'Show' : 'Movie')));
+  if (e.sentBack) chips.append(el('span', 'chip review', 'Sent back by Objections'));
   if (e.history.some(h => h.decision === 'keep')) {
     const kept = e.history.filter(h => h.decision === 'keep').length;
     chips.append(el('span', 'chip', kept === 1 ? 'Kept once before' : `Kept ${kept} times before`));
@@ -56,6 +57,10 @@ function entry(e) {
     ),
     el('div', 'line', `Downvoted by ${e.downvotes.map(d => `${d.voter} (${num(d.voteWeight)})`).join(', ')}`),
   );
+  if (e.objections.length)
+    main.append(
+      el('div', 'line', `Objected: ${e.objections.map(o => `${o.voter} (${num(o.voteWeight)})`).join(', ')}`),
+    );
   if (e.watchedSinceQueued.length)
     main.append(el('div', 'line', `Watched it since: ${e.watchedSinceQueued.map(w => w.voter).join(', ')}`));
 
@@ -130,6 +135,16 @@ function leavingEntry(l) {
     ),
   );
   // Overnight deletion didn't happen: say why. It's tried again the next night.
+  // How close friends' Objections are to sending it back.
+  if (!l.objectionsOpen) main.append(el('div', 'line', 'Sent back once already: no Objections this time'));
+  else if (l.objections?.length)
+    main.append(
+      el(
+        'div',
+        'line',
+        `Objections: ${num(l.objectionWeight)} of ${num(l.objectionBar)} · ${l.objections.map(o => `${o.voter} (${num(o.voteWeight)})`).join(', ')}`,
+      ),
+    );
   if (l.deleteError) main.append(el('div', 'line problem', `Couldn't delete: ${l.deleteError}. Tried again tonight.`));
   const acts = el('div', 'acts');
   acts.append(

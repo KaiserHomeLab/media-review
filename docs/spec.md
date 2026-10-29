@@ -114,6 +114,12 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 - Any Voter can make an Objection while a Title is Leaving Soon. One per Voter per Title.
 - Objections carry Vote Weight. When their total reaches the Objection bar, the Title leaves Leaving Soon and goes back to the Review Queue. The Owner is messaged on Discord.
 - A Title can be sent back this way only once. If the Owner Removes it again, its second Leaving Soon allows no Objections.
+- Confirmed by the Owner:
+  - An Objection weighs what that Voter's Downvote would (Base Weight, plus the Title Bonus if they've Sampled it). With the bar at 2, one friend who has tried the Title can send it back alone. The bar is editable in Rules.
+  - A Voter who Downvoted the Title can't object to it.
+  - A Voter can withdraw an Objection until the Title is sent back.
+  - "Only once" is per round: a Keep wipes the slate, so a much later Remove allows Objections again.
+- Sent back, the Title leaves Leaving Soon and the Plex collection (so it can't be deleted) and returns to the Review Queue marked as sent back, with its Downvotes and who objected. Only the Owner sees who objected.
 
 ### Re-requests after deletion
 

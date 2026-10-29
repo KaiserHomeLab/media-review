@@ -12,6 +12,8 @@ const {
   keep,
   remove,
   leavingSoon,
+  object,
+  withdrawObjection,
   evaluateAll,
   reviewQueue,
 } = require('../lib/review');
@@ -211,6 +213,7 @@ test('Remove takes a queued Title into Leaving Soon for 14 days, ending overnigh
       removedAt: new Date((NOW + 60) * 1000).toISOString(),
       endsAt: new Date(ends * 1000).toISOString(),
       daysLeft: Math.ceil((ends - (NOW + 60 + DAY)) / DAY),
+      objectionsOpen: true,
     },
   ]);
   assert.ok(t.store.title('m1'), 'still in the catalogue');
@@ -250,4 +253,65 @@ test('Keep after all: the Owner Keeps a Leaving Soon Title, which clears its Dow
     reviewQueue(t.store)[0].history.map(h => h.decision),
     ['remove', 'keep'],
   );
+});
+
+// ------------------------------------------------------------------ 0006: Objections
+
+/** m1 Removed: a and b Downvoted it; a, b and c tried it; d never did. @param {ReturnType<typeof setup>} t */
+const leaving = t => {
+  queued(t);
+  remove(t.store, DEFAULTS, 'm1', NOW + 60);
+};
+
+test('one friend who tried it can send it back: out of Leaving Soon, into the queue, marked sent back', () => {
+  const t = setup();
+  leaving(t);
+  assert.deepEqual(object(t.store, DEFAULTS, 'c', 'm1', NOW + DAY), { ok: true, sentBack: true });
+  assert.deepEqual(leavingSoon(t.store, NOW + DAY), [], 'no longer Leaving Soon, so it will not be deleted');
+  const [entry] = reviewQueue(t.store);
+  assert.equal(entry.sentBack, true);
+  assert.deepEqual(
+    entry.objections.map(o => [o.voter, o.voteWeight]),
+    [['user-c', 3]],
+  );
+  assert.equal(entry.downvotes.length, 2, 'its Downvotes are still there for the Owner');
+});
+
+test('Objections below the bar keep it Leaving Soon, and can be withdrawn', () => {
+  const t = setup();
+  leaving(t);
+  assert.deepEqual(object(t.store, DEFAULTS, 'd', 'm1', NOW + DAY), { ok: true, sentBack: false }); // never tried it: 0
+  assert.equal(leavingSoon(t.store, NOW + DAY).length, 1);
+  assert.deepEqual(object(t.store, DEFAULTS, 'd', 'm1', NOW + DAY), { ok: false, error: 'already-objected' });
+  assert.deepEqual(withdrawObjection(t.store, 'd', 'm1'), { ok: true });
+  assert.deepEqual(withdrawObjection(t.store, 'd', 'm1'), { ok: false, error: 'not-objected' });
+});
+
+test('a friend who Downvoted it cannot object, and nobody can object to a Title that is not Leaving Soon', () => {
+  const t = setup();
+  queued(t);
+  assert.deepEqual(object(t.store, DEFAULTS, 'c', 'm1', NOW), { ok: false, error: 'not-leaving' });
+  remove(t.store, DEFAULTS, 'm1', NOW + 60);
+  assert.deepEqual(object(t.store, DEFAULTS, 'a', 'm1', NOW + DAY), { ok: false, error: 'downvoted' });
+});
+
+test('sent back once: Removed again, its second Leaving Soon takes no Objections', () => {
+  const t = setup();
+  leaving(t);
+  object(t.store, DEFAULTS, 'c', 'm1', NOW + DAY);
+  assert.equal(remove(t.store, DEFAULTS, 'm1', NOW + 2 * DAY).ok, true);
+  assert.deepEqual(object(t.store, DEFAULTS, 'c', 'm1', NOW + 3 * DAY), { ok: false, error: 'objections-closed' });
+  assert.deepEqual(object(t.store, DEFAULTS, 'd', 'm1', NOW + 3 * DAY), { ok: false, error: 'objections-closed' });
+});
+
+test('a Keep wipes the slate: after a later Remove, Objections are open again', () => {
+  const t = setup();
+  leaving(t);
+  object(t.store, DEFAULTS, 'c', 'm1', NOW + DAY); // sent back
+  keep(t.store, 'm1', NOW + 2 * DAY);
+  castDownvote(t.store, DEFAULTS, 'a', 'm1', NOW + 3 * DAY);
+  castDownvote(t.store, DEFAULTS, 'b', 'm1', NOW + 3 * DAY);
+  assert.equal(reviewQueue(t.store)[0].sentBack, false);
+  remove(t.store, DEFAULTS, 'm1', NOW + 4 * DAY);
+  assert.deepEqual(object(t.store, DEFAULTS, 'd', 'm1', NOW + 5 * DAY), { ok: true, sentBack: false });
 });

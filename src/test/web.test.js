@@ -20,6 +20,7 @@ const ACCOUNTS =
     3: { plexId: 'b', username: 'bob', access: 'shared' },
     4: { plexId: 'x', username: 'stranger', access: 'none' },
     5: { plexId: 'c', username: 'carol', access: 'shared' },
+    6: { plexId: 'd', username: 'dave', access: 'shared' },
   });
 const fakePlex = /** @type {any} */ ({
   createPin: async () => ({ id: 2, code: 'CODE' }),
@@ -404,4 +405,56 @@ test('why a deletion failed is shown to the Owner and Media Ops, never to Voters
   assert.equal(forOps.deleteError, 'not found in Radarr, so nothing was deleted');
   const forAlice = (await (await req('/api/leaving-soon', { cookie: alice })).json()).leavingSoon[0];
   assert.equal('deleteError' in forAlice, false);
+});
+
+test('Objections from the web app: refused for downvoters, shown to the Owner, and one friend who tried it sends it back', async () => {
+  let changes = 0;
+  const { signIn, req, post, store } = await setup({ leavingChanged: () => changes++ });
+  const owner = (await signIn(1)).cookie;
+  const [alice, bob, carol] = [(await signIn(2)).cookie, (await signIn(3)).cookie, (await signIn(5)).cookie];
+  store.upsertVoter({ plexId: 'd', username: 'dave' });
+  const dave = (await signIn(6)).cookie;
+  // alice, bob and carol watched it; dave never did.
+  store.upsertPlays(
+    ['a', 'b', 'c'].map((v, i) => ({
+      id: String(i),
+      voterId: v,
+      titleKey: 'm1',
+      started: NOW - 60,
+      seconds: 3600,
+      watched: true,
+    })),
+  );
+  await post(alice, '/api/titles/m1/downvote');
+  await post(bob, '/api/titles/m1/downvote');
+  await post(owner, '/api/owner/review-queue/m1/remove');
+
+  assert.deepEqual(await (await post(alice, '/api/titles/m1/object')).json(), { error: 'downvoted' });
+  assert.equal((await post(owner, '/api/titles/m1/object')).status, 403);
+
+  // dave's Objection weighs nothing (never tried it, no other watching): not sent back.
+  assert.deepEqual(await (await post(dave, '/api/titles/m1/object')).json(), { objected: true, sentBack: false });
+  const [forOwner] = (await (await req('/api/owner/leaving-soon', { cookie: owner })).json()).leavingSoon;
+  assert.deepEqual(
+    [forOwner.objections, forOwner.objectionWeight, forOwner.objectionBar],
+    [[{ voter: 'dave', voteWeight: 0 }], 0, 2],
+  );
+  const forCarol = await (await req('/api/leaving-soon', { cookie: carol })).text();
+  assert.doesNotMatch(forCarol, /dave/, 'Voters never see who objected');
+  const tile = (await (await req('/api/titles', { cookie: dave })).json()).titles[0];
+  assert.deepEqual([tile.objected, tile.objectionsOpen], [true, true]);
+  assert.deepEqual(await (await post(dave, '/api/titles/m1/unobject')).json(), { objected: false });
+
+  // carol watched it: her Objection alone reaches the bar.
+  assert.deepEqual(await (await post(carol, '/api/titles/m1/object')).json(), { objected: true, sentBack: true });
+  assert.equal(changes, 2, 'Remove, then the send-back: Plex is told both times');
+  const [entry] = (await (await req('/api/owner/review-queue', { cookie: owner })).json()).reviewQueue;
+  assert.equal(entry.sentBack, true);
+  assert.deepEqual(entry.objections, [{ voter: 'carol', voteWeight: 3 }]);
+
+  // Removed again: no Objections this time.
+  await post(owner, '/api/owner/review-queue/m1/remove');
+  assert.deepEqual(await (await post(dave, '/api/titles/m1/object')).json(), { error: 'objections-closed' });
+  const again = (await (await req('/api/titles', { cookie: dave })).json()).titles[0];
+  assert.equal(again.objectionsOpen, false);
 });

@@ -26,7 +26,12 @@ CREATE TABLE IF NOT EXISTS downvotes (
 );
 CREATE TABLE IF NOT EXISTS review_queue (
   title_key TEXT PRIMARY KEY, queued_at INTEGER NOT NULL,
-  audience INTEGER NOT NULL, audience_weight REAL NOT NULL, downvote_weight REAL NOT NULL
+  audience INTEGER NOT NULL, audience_weight REAL NOT NULL, downvote_weight REAL NOT NULL,
+  sent_back INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS objections (
+  voter_id TEXT NOT NULL, title_key TEXT NOT NULL, created_at INTEGER NOT NULL, vote_weight REAL,
+  PRIMARY KEY (voter_id, title_key)
 );
 CREATE TABLE IF NOT EXISTS queued_downvotes (
   title_key TEXT NOT NULL, voter_id TEXT NOT NULL, vote_weight REAL NOT NULL, in_audience INTEGER NOT NULL,
@@ -34,7 +39,7 @@ CREATE TABLE IF NOT EXISTS queued_downvotes (
 );
 CREATE TABLE IF NOT EXISTS leaving_soon (
   title_key TEXT PRIMARY KEY, removed_at INTEGER NOT NULL, ends_at INTEGER NOT NULL,
-  delete_error TEXT, deleted_from TEXT
+  delete_error TEXT, deleted_from TEXT, objections_closed INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS deletions (
   title_key TEXT NOT NULL, at INTEGER NOT NULL, deleted_from TEXT NOT NULL
@@ -80,6 +85,8 @@ function openStore(file) {
   addColumn('titles', 'tvdb_id', 'TEXT'); // how Sonarr knows a show
   addColumn('leaving_soon', 'delete_error', 'TEXT'); // why the last try to delete it failed
   addColumn('leaving_soon', 'deleted_from', 'TEXT'); // apps it's already gone from, if a try half-worked
+  addColumn('review_queue', 'sent_back', 'INTEGER NOT NULL DEFAULT 0'); // back by Objections
+  addColumn('leaving_soon', 'objections_closed', 'INTEGER NOT NULL DEFAULT 0'); // its second Leaving Soon
 
   /** @param {() => void} fn */
   const tx = fn => {
@@ -269,6 +276,32 @@ function openStore(file) {
 
     /** @param {string} titleKey */
     isQueued: titleKey => !!db.prepare('SELECT 1 FROM review_queue WHERE title_key = ?').get(titleKey),
+    /** @param {string} voterId @param {string} titleKey @param {number} now @returns {boolean} false if made already */
+    addObjection: (voterId, titleKey, now) =>
+      db
+        .prepare('INSERT INTO objections (voter_id, title_key, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
+        .run(voterId, titleKey, now).changes === 1,
+    /** @param {string} voterId @param {string} titleKey @returns {boolean} false if there was none */
+    removeObjection: (voterId, titleKey) =>
+      db.prepare('DELETE FROM objections WHERE voter_id = ? AND title_key = ?').run(voterId, titleKey).changes === 1,
+    /** @param {string} titleKey @returns {Array<{ voter_id: string, username: string | null, vote_weight: number | null }>} */
+    objectionsOf: titleKey =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT o.voter_id, v.username, o.vote_weight FROM objections o
+             LEFT JOIN voters v ON v.plex_id = o.voter_id WHERE o.title_key = ? ORDER BY o.vote_weight DESC, o.created_at`,
+          )
+          .all(titleKey)
+      ),
+    /** @param {string} voterId @returns {Set<string>} */
+    objectedBy: voterId =>
+      new Set(
+        db
+          .prepare('SELECT title_key FROM objections WHERE voter_id = ?')
+          .all(voterId)
+          .map(r => String(r.title_key)),
+      ),
     /** @param {string} titleKey */
     isLeaving: titleKey => !!db.prepare('SELECT 1 FROM leaving_soon WHERE title_key = ?').get(titleKey),
     // Queue a Title and freeze its Downvotes with the Vote Weight each had at that moment.
@@ -276,13 +309,19 @@ function openStore(file) {
      * @param {string} titleKey @param {number} now
      * @param {{ audience: number, audienceWeight: number, downvoteWeight: number }} result
      * @param {Array<{ voterId: string, voteWeight: number, inAudience: boolean, createdAt: number }>} downvotes
+     * @param {Map<string, number>} [objections] sent back by these Objections (Voter → Vote Weight)
      */
-    enqueue: (titleKey, now, result, downvotes) =>
+    enqueue: (titleKey, now, result, downvotes, objections) =>
       tx(() => {
+        if (objections) {
+          db.prepare('DELETE FROM leaving_soon WHERE title_key = ?').run(titleKey);
+          const w = db.prepare('UPDATE objections SET vote_weight = ? WHERE voter_id = ? AND title_key = ?');
+          for (const [voter, weight] of objections) w.run(weight, voter, titleKey);
+        }
         db.prepare(
-          `INSERT INTO review_queue (title_key, queued_at, audience, audience_weight, downvote_weight)
-           VALUES (?, ?, ?, ?, ?)`,
-        ).run(titleKey, now, result.audience, result.audienceWeight, result.downvoteWeight);
+          `INSERT INTO review_queue (title_key, queued_at, audience, audience_weight, downvote_weight, sent_back)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        ).run(titleKey, now, result.audience, result.audienceWeight, result.downvoteWeight, objections ? 1 : 0);
         const ins = db.prepare(
           `INSERT INTO queued_downvotes (title_key, voter_id, vote_weight, in_audience, created_at)
            VALUES (?, ?, ?, ?, ?)`,
@@ -318,7 +357,7 @@ function openStore(file) {
     /** @param {string} titleKey @param {number} now */
     keep: (titleKey, now) =>
       tx(() => {
-        for (const table of ['review_queue', 'queued_downvotes', 'downvotes', 'leaving_soon'])
+        for (const table of ['review_queue', 'queued_downvotes', 'downvotes', 'leaving_soon', 'objections'])
           db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
         db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'keep', ?)`).run(titleKey, now);
       }),
@@ -326,18 +365,20 @@ function openStore(file) {
     /** @param {string} titleKey @param {number} now @param {number} endsAt */
     remove: (titleKey, now, endsAt) =>
       tx(() => {
-        for (const table of ['review_queue', 'queued_downvotes'])
-          db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
-        db.prepare('INSERT INTO leaving_soon (title_key, removed_at, ends_at) VALUES (?, ?, ?)').run(
-          titleKey,
-          now,
-          endsAt,
+        // Sent back by Objections once already: this Leaving Soon takes none.
+        const back = /** @type {any} */ (
+          db.prepare('SELECT sent_back FROM review_queue WHERE title_key = ?').get(titleKey)
         );
+        for (const table of ['review_queue', 'queued_downvotes', 'objections'])
+          db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
+        db.prepare(
+          'INSERT INTO leaving_soon (title_key, removed_at, ends_at, objections_closed) VALUES (?, ?, ?, ?)',
+        ).run(titleKey, now, endsAt, back?.sent_back ? 1 : 0);
         db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'remove', ?)`).run(titleKey, now);
       }),
     /**
      * @returns {Array<{ title_key: string, removed_at: number, ends_at: number, delete_error: string | null,
-     *   deleted_from: string | null }>} soonest first
+     *   deleted_from: string | null, objections_closed: number }>} soonest first
      */
     leavingSoon: () => /** @type {any} */ (db.prepare('SELECT * FROM leaving_soon ORDER BY ends_at, title_key').all()),
     // A try to delete it didn't finish: why, and the apps it is already gone from (comma-separated).
@@ -350,7 +391,7 @@ function openStore(file) {
     /** @param {string} titleKey @param {number} now @param {string[]} deletedFrom */
     deleted: (titleKey, now, deletedFrom) =>
       tx(() => {
-        for (const table of ['leaving_soon', 'downvotes'])
+        for (const table of ['leaving_soon', 'downvotes', 'objections'])
           db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
         db.prepare('INSERT INTO deletions (title_key, at, deleted_from) VALUES (?, ?, ?)').run(
           titleKey,

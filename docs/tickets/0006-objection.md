@@ -2,6 +2,8 @@
 
 **Blocked by:** 0004
 
+**Status:** Done. Discord messages to the Owner on a send-back come with 0010.
+
 ## What to build
 
 - On the web app, a Voter can make an Objection on a Title that is Leaving Soon. One per Voter per Title. Voters see only their own Objections.
@@ -11,7 +13,7 @@
 
 ## Acceptance criteria
 
-- [ ] Unit tests cover: the bar reached exactly at 2, staying under 2, and the bar not depending on the Audience.
-- [ ] A sent-back Title is in the queue, out of the collection, and not deleted by 0005.
-- [ ] On its second Leaving Soon, Objections are refused, and the web app says why.
-- [ ] Objections on a Title that isn't Leaving Soon are refused.
+- [x] Unit tests cover: the bar reached exactly at 2, staying under 2, and the bar not depending on the Audience.
+- [x] A sent-back Title is in the queue, out of the collection, and not deleted by 0005.
+- [x] On its second Leaving Soon, Objections are refused, and the web app says why.
+- [x] Objections on a Title that isn't Leaving Soon are refused.
