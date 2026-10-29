@@ -1032,8 +1032,34 @@ code {
     opacity: 0.6;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .confetti {
-    display: none;
-  }
+/* Reduced motion: still confetti, inside the banner. */
+.founder-welcome {
+  position: relative;
+  overflow: hidden;
+}
+.founder-welcome > b,
+.founder-welcome > span,
+.founder-welcome > .icon-btn {
+  position: relative;
+  z-index: 1;
+}
+.confetti.still {
+  position: absolute;
+  z-index: 0;
+}
+.confetti.still i {
+  top: auto;
+  width: 6px;
+  height: 9px;
+  opacity: 0.55;
+  animation: none;
+}
+button.chip.founder {
+  font: 11px var(--mono);
+  cursor: pointer;
+}
+button.chip.founder:hover,
+button.chip.founder:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }

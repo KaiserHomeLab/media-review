@@ -473,12 +473,27 @@ async function loadAsks() {
 
 // ------------------------------------------------------------------ a thank-you
 // For the friend who made us build this: a badge by their name, and once a year a welcome with confetti.
+// Clicking the badge shows the welcome again.
 /** @param {boolean} welcome */
 function founder(welcome) {
-  const badge = el('span', 'chip founder', '★ Inspired this app');
+  const badge = el('button', 'chip founder', '★ Inspired this app');
+  badge.type = 'button';
   badge.title = 'Media Review exists because of you. Thank you.';
+  // It sits inside the header's home link: show the welcome instead of going home.
+  badge.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    welcomeBanner();
+  });
   $('who').append(' ', badge);
   if (!welcome) return;
+  welcomeBanner();
+  api('/api/me/welcomed', { method: 'POST', body: '{}' }).catch(() => {});
+}
+
+const CONFETTI = ['#e5a00d', '#d95926', '#199e70', '#4a90e2', '#9b7fe6', '#f4f3ee'];
+function welcomeBanner() {
+  document.querySelector('.founder-welcome')?.remove();
   const box = el('div', 'founder-welcome');
   box.setAttribute('role', 'status');
   const close = el('button', 'icon-btn', '✕');
@@ -489,23 +504,31 @@ function founder(welcome) {
     el('span', '', 'Every Downvote, every Leaving Soon, all of it started with you. Thank you. ★'),
     close,
   );
-  document.querySelector('main')?.prepend(box);
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const colors = ['#e5a00d', '#d95926', '#199e70', '#4a90e2', '#9b7fe6', '#f4f3ee'];
-  const rain = el('div', 'confetti');
+  // With reduced motion the confetti stays put, sprinkled over the banner; otherwise it falls across the page.
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rain = el('div', still ? 'confetti still' : 'confetti');
   rain.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < (still ? 28 : 90); i++) {
     const bit = el('i', '');
     bit.style.left = `${Math.random() * 100}%`;
-    bit.style.background = colors[i % colors.length];
-    bit.style.animationDelay = `${Math.random() * 0.8}s`;
-    bit.style.animationDuration = `${2.2 + Math.random() * 1.6}s`;
-    bit.style.setProperty('--drift', `${(Math.random() - 0.5) * 160}px`);
-    bit.style.setProperty('--spin', `${(Math.random() - 0.5) * 1440}deg`);
+    bit.style.background = CONFETTI[i % CONFETTI.length];
+    if (still) {
+      bit.style.top = `${Math.random() * 100}%`;
+      bit.style.transform = `rotate(${Math.round(Math.random() * 180)}deg)`;
+    } else {
+      bit.style.animationDelay = `${Math.random() * 0.8}s`;
+      bit.style.animationDuration = `${2.4 + Math.random() * 1.8}s`;
+      bit.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * 180)}px`);
+      bit.style.setProperty('--spin', `${Math.round((Math.random() - 0.5) * 1440)}deg`);
+    }
     rain.append(bit);
   }
-  document.body.append(rain);
-  setTimeout(() => rain.remove(), 4600);
+  if (still) box.append(rain);
+  else {
+    document.body.append(rain);
+    setTimeout(() => rain.remove(), 5000);
+  }
+  document.querySelector('main')?.prepend(box);
 }
 
 // ------------------------------------------------------------------ Discord

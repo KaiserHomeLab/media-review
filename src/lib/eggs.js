@@ -7,6 +7,13 @@
 
 const FOUNDER = 'ginger13344';
 
+/** @param {string} plexId */
+const key = plexId => `founderWelcomed:${plexId}`;
+/** @param {number} now */
+const yearOf = now => String(new Date(now * 1000).getUTCFullYear());
+
+// The welcome comes the first time, then once a year. It counts as given only once the page has shown it
+// (welcomed()), so a reload or a tab opened in the background doesn't use it up unseen.
 /**
  * @param {import('./store').Store} store @param {string} plexId @param {string | undefined} username
  * @param {number} now unix seconds
@@ -14,12 +21,10 @@ const FOUNDER = 'ginger13344';
  */
 function eggFor(store, plexId, username, now) {
   if (String(username ?? '').toLowerCase() !== FOUNDER) return null;
-  // The welcome comes the first time, then once a year; asking for it again the same year doesn't repeat it.
-  const year = String(new Date(now * 1000).getUTCFullYear());
-  const key = `founderWelcomed:${plexId}`;
-  const welcome = store.getSetting(key) !== year;
-  if (welcome) store.setSetting(key, year);
-  return { founder: true, welcome };
+  return { founder: true, welcome: store.getSetting(key(plexId)) !== yearOf(now) };
 }
 
-module.exports = { eggFor };
+/** @param {import('./store').Store} store @param {string} plexId @param {number} now */
+const welcomed = (store, plexId, now) => store.setSetting(key(plexId), yearOf(now));
+
+module.exports = { eggFor, welcomed };

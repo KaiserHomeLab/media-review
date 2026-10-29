@@ -22,7 +22,7 @@ const {
 } = require('./review');
 const problems = require('./problems');
 const holdback = require('./holdback');
-const { eggFor } = require('./eggs');
+const { eggFor, welcomed } = require('./eggs');
 const { rest: discordRest } = require('./discord');
 const { LINK_MINUTES } = require('./bot');
 const { posterOk } = require('./notices');
@@ -517,6 +517,12 @@ function createApp({
           anime: settings.sampleAnimeMinutes,
         },
       });
+    }
+    if (m === 'POST' && p === '/api/me/welcomed') {
+      if (!eggFor(store, s.plexId, store.voter(s.plexId)?.username, now()))
+        return json(res, 404, { error: 'not found' });
+      welcomed(store, s.plexId, now());
+      return json(res, 200, { ok: true });
     }
     if (m === 'POST' && p === '/api/logout') {
       const token = cookiesOf(req).mr_session;
