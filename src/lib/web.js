@@ -22,6 +22,7 @@ const {
 } = require('./review');
 const problems = require('./problems');
 const holdback = require('./holdback');
+const { eggFor } = require('./eggs');
 const { rest: discordRest } = require('./discord');
 const { LINK_MINUTES } = require('./bot');
 const { posterOk } = require('./notices');
@@ -504,7 +505,9 @@ function createApp({
 
     if (m === 'GET' && p === '/api/me') {
       const v = store.voter(s.plexId);
+      const egg = s.isOwner ? null : eggFor(store, s.plexId, v?.username, now());
       return json(res, 200, {
+        ...(egg ? { egg } : {}), // only on the page of the person it's for
         plexId: s.plexId,
         username: v?.username ?? 'Owner',
         isOwner: s.isOwner,

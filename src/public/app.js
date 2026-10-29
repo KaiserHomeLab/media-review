@@ -81,7 +81,7 @@ function card(t) {
     const btn = el(
       'button',
       what === 'downvote' ? 'btn small' : 'btn small ghost',
-      what === 'downvote' ? '▼ Downvote' : 'Withdraw',
+      what === 'downvote' ? (me.egg?.founder ? '▼ Downvote (the original)' : '▼ Downvote') : 'Withdraw',
     );
     btn.type = 'button';
     btn.addEventListener('click', async () => {
@@ -471,6 +471,43 @@ async function loadAsks() {
   );
 }
 
+// ------------------------------------------------------------------ a thank-you
+// For the friend who made us build this: a badge by their name, and once a year a welcome with confetti.
+/** @param {boolean} welcome */
+function founder(welcome) {
+  const badge = el('span', 'chip founder', '★ Inspired this app');
+  badge.title = 'Media Review exists because of you. Thank you.';
+  $('who').append(' ', badge);
+  if (!welcome) return;
+  const box = el('div', 'founder-welcome');
+  box.setAttribute('role', 'status');
+  const close = el('button', 'icon-btn', '✕');
+  Object.assign(close, { type: 'button', ariaLabel: 'Close' });
+  close.addEventListener('click', () => box.remove());
+  box.append(
+    el('b', '', `This whole thing exists because of you, ${me.username}.`),
+    el('span', '', 'Every Downvote, every Leaving Soon, all of it started with you. Thank you. ★'),
+    close,
+  );
+  document.querySelector('main')?.prepend(box);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['#e5a00d', '#d95926', '#199e70', '#4a90e2', '#9b7fe6', '#f4f3ee'];
+  const rain = el('div', 'confetti');
+  rain.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < 70; i++) {
+    const bit = el('i', '');
+    bit.style.left = `${Math.random() * 100}%`;
+    bit.style.background = colors[i % colors.length];
+    bit.style.animationDelay = `${Math.random() * 0.8}s`;
+    bit.style.animationDuration = `${2.2 + Math.random() * 1.6}s`;
+    bit.style.setProperty('--drift', `${(Math.random() - 0.5) * 160}px`);
+    bit.style.setProperty('--spin', `${(Math.random() - 0.5) * 1440}deg`);
+    rain.append(bit);
+  }
+  document.body.append(rain);
+  setTimeout(() => rain.remove(), 4600);
+}
+
 // ------------------------------------------------------------------ Discord
 // Whether this account's Discord is connected, and Disconnect. Connecting starts in Discord, with /link.
 async function loadDiscord() {
@@ -660,6 +697,7 @@ async function start() {
     if (sessionStorage.getItem('media-review:discord-link')) return location.replace('/link.html');
   } catch {}
   $('who').textContent = me.isOwner ? `${me.username} · Owner` : me.username;
+  if (me.egg?.founder) founder(me.egg.welcome);
   $('logout').hidden = false;
   $('owner-link').hidden = !me.isOwner;
   $('settings-link').hidden = !me.isOwner;

@@ -980,3 +980,60 @@ code {
   letter-spacing: 0;
   text-transform: none;
 }
+
+/* ------------------------------------------------------------------ a thank-you (see founder() in app.js) */
+.chip.founder {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.founder-welcome {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  align-items: start;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+}
+.founder-welcome b {
+  font-size: 16px;
+}
+.founder-welcome span {
+  grid-column: 1;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.founder-welcome .icon-btn {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 50;
+}
+.confetti i {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  to {
+    transform: translate(var(--drift), 105vh) rotate(var(--spin));
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti {
+    display: none;
+  }
+}
