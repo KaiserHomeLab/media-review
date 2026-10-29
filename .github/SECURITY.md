@@ -15,7 +15,10 @@ can.
   code printed in the container's log, so only someone with access to the server can claim it.
   Ten wrong codes close setup until the container restarts with a new code.
 - **Who can sign in.** Sign-in is Plex's own. The account that owns the linked Plex server is the
-  Owner; accounts the server is shared with are Voters; anyone else is turned away.
+  Owner; accounts the server is shared with are Voters; anyone else is turned away. After every
+  sync, Media Review asks plex.tv again who the server is shared with. Anyone it no longer is gets
+  signed out everywhere, their Discord commands are refused, and their votes stop counting. If
+  plex.tv can't be asked, nobody is signed out.
 - **Sessions** are a random token in an HttpOnly, SameSite=Lax cookie (Secure behind https),
   valid for 30 days. Every request that changes something must send JSON, which a form on
   another website can't, so other sites can't act on your behalf.

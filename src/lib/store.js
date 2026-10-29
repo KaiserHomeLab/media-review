@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS problem_reporters (
 `;
 
 /**
- * @typedef {{ plex_id: string, username: string, thumb: string | null }} VoterRow
+ * @typedef {{ plex_id: string, username: string, thumb: string | null, removed_at: number | null }} VoterRow
  * @typedef {{ rating_key: string, kind: 'movie' | 'show', title: string, year: number | null,
  *   thumb: string | null, library: string | null, library_key: string | null,
  *   tmdb_id: string | null, tvdb_id: string | null }} TitleRow
@@ -124,6 +124,7 @@ function openStore(file) {
   addColumn('leaving_soon', 'deleted_from', 'TEXT'); // apps it's already gone from, if a try half-worked
   addColumn('review_queue', 'sent_back', 'INTEGER NOT NULL DEFAULT 0'); // back by Objections
   addColumn('leaving_soon', 'objections_closed', 'INTEGER NOT NULL DEFAULT 0'); // its second Leaving Soon
+  addColumn('voters', 'removed_at', 'INTEGER'); // the server is no longer shared with them: their votes don't count
   addColumn('problem_reporters', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
   addColumn('bring_back_asks', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
   // Titles deleted before holding back existed are held back too, once.
@@ -176,6 +177,14 @@ function openStore(file) {
 
     /** @param {{ plexId: string, username: string, thumb?: string | null }} v */
     upsertVoter: v => void q.upsertVoter.run(v.plexId, v.username, v.thumb ?? null),
+    // Access: who the server is still shared with. A Voter it no longer is has removed_at set; their Downvotes
+    // and Objections are kept but don't count, and count again if it's shared with them again.
+    /** @returns {Array<{ plex_id: string, username: string, removed_at: number | null }>} */
+    voters: () => /** @type {any} */ (db.prepare('SELECT plex_id, username, removed_at FROM voters').all()),
+    /** @param {string} plexId @param {number | null} at null: they have access again */
+    setRemoved: (plexId, at) => void db.prepare('UPDATE voters SET removed_at = ? WHERE plex_id = ?').run(at, plexId),
+    /** @param {string} plexId */
+    dropSessionsOf: plexId => void db.prepare('DELETE FROM sessions WHERE plex_id = ?').run(plexId),
     /** @param {string} plexId @returns {VoterRow | undefined} */
     voter: plexId => /** @type {any} */ (db.prepare('SELECT * FROM voters WHERE plex_id = ?').get(plexId)),
 
@@ -270,7 +279,8 @@ function openStore(file) {
         db
           .prepare(
             `SELECT v.plex_id AS id, COALESCE(SUM(p.seconds), 0) AS s FROM voters v
-             LEFT JOIN plays p ON p.voter_id = v.plex_id AND p.started >= ? GROUP BY v.plex_id`,
+             LEFT JOIN plays p ON p.voter_id = v.plex_id AND p.started >= ? WHERE v.removed_at IS NULL
+             GROUP BY v.plex_id`,
           )
           .all(since)
       );
@@ -301,7 +311,13 @@ function openStore(file) {
         .map(r => ({ voterId: String(r.voter_id), titleKey: String(r.title_key) })),
     /** @param {string} titleKey @returns {Array<{ voter_id: string, created_at: number }>} */
     downvotesOf: titleKey =>
-      /** @type {any} */ (db.prepare('SELECT voter_id, created_at FROM downvotes WHERE title_key = ?').all(titleKey)),
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT voter_id, created_at FROM downvotes WHERE title_key = ? AND voter_id NOT IN (SELECT plex_id FROM voters WHERE removed_at IS NOT NULL)`,
+          )
+          .all(titleKey)
+      ),
     /** @param {string} voterId @returns {Set<string>} */
     downvotedBy: voterId =>
       new Set(
@@ -317,7 +333,7 @@ function openStore(file) {
           `SELECT DISTINCT d.title_key AS k FROM downvotes d
            LEFT JOIN review_queue r ON r.title_key = d.title_key
            LEFT JOIN leaving_soon l ON l.title_key = d.title_key
-           WHERE r.title_key IS NULL AND l.title_key IS NULL`,
+           WHERE r.title_key IS NULL AND l.title_key IS NULL AND d.voter_id NOT IN (SELECT plex_id FROM voters WHERE removed_at IS NOT NULL)`,
         )
         .all()
         .map(r => String(r.k)),
@@ -338,7 +354,8 @@ function openStore(file) {
         db
           .prepare(
             `SELECT o.voter_id, v.username, o.vote_weight FROM objections o
-             LEFT JOIN voters v ON v.plex_id = o.voter_id WHERE o.title_key = ? ORDER BY o.vote_weight DESC, o.created_at`,
+             LEFT JOIN voters v ON v.plex_id = o.voter_id WHERE o.title_key = ? AND v.removed_at IS NULL
+             ORDER BY o.vote_weight DESC, o.created_at`,
           )
           .all(titleKey)
       ),

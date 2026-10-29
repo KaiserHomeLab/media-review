@@ -20,6 +20,7 @@ const { APPS, appSettings, arrsFrom, seerrFrom, probe } = require('./lib/apps');
 const { rest: discordRest } = require('./lib/discord');
 const notices = require('./lib/notices');
 const { holdBack } = require('./lib/holdback');
+const { checkAccess } = require('./lib/access');
 const { runDeletions } = require('./lib/deletions');
 const { botRunner } = require('./lib/bot');
 
@@ -210,6 +211,8 @@ const runSync = async () => {
   try {
     if (!apps.isSetUp()) return; // nothing to sync until Plex is linked
     await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings, now, log });
+    // Anyone the server is no longer shared with is signed out, and their votes stop counting.
+    await checkAccess({ store, sharedWith: m => plex.sharedWith(m), machineId, now, log });
     // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up.
     await runDeletions({ store, arrs: arrsFrom(apps), settings, now, log });
     await holdBack({ store, seerr: seerrFrom(apps), log });

@@ -8,6 +8,10 @@ number, a fix the last one.
 
 ### Added
 
+- Someone you stop sharing your Plex server with is signed out of Media Review within one sync,
+  and their Discord commands stop working. Their Downvotes and Objections stop counting, and count
+  again if you share with them again. Media Review asks plex.tv after every sync; if plex.tv can't
+  be reached, nobody is signed out.
 - **Settings → Appearance**, the same as Media Ops': light or dark (or follow each device), the
   accent color, your own title and your own logo, for every page, friends' included. The section
   colors (Downvotes amber, Problem Reports blue, Leaving Soon red…) stay the same whatever you pick.

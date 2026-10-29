@@ -109,7 +109,7 @@ function titleFrom(ctx, v) {
 /** @param {BotCtx} ctx @param {any} i @returns {Promise<Array<{ name: string, value: string }>>} */
 async function autocomplete(ctx, i) {
   const link = ctx.store.linkOf(String(userOf(i).id));
-  if (!link) return [];
+  if (!link || ctx.store.voter(link.plex_id)?.removed_at != null) return [];
   const focused = (i.data?.options ?? []).find((/** @type {any} */ o) => o.focused);
   const q = String(focused?.value ?? '').toLowerCase();
   if (focused?.name === 'part') {
@@ -173,6 +173,8 @@ async function command(ctx, i) {
     return url ? `${head}\n${url}\n${HOW}` : `${head}\n${NO_ADDRESS}`;
   }
   const voterId = link.plex_id;
+  if (store.voter(voterId)?.removed_at != null)
+    return "Your Plex account no longer has access to this server, so Media Review can't take commands from it.";
   const isOwner = !store.voter(voterId);
   if (name === 'mine') return mine(ctx, voterId);
   if (isOwner)
