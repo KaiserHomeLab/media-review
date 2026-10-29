@@ -166,3 +166,26 @@ test('REST: the bot token goes in the header, and a refused token is said plainl
   assert.deepEqual(seen[0], ['GET', 'https://discord.com/api/v10/users/@me', 'Bot tkn']);
   await assert.rejects(api.guilds(), /Discord refused the bot token/);
 });
+
+test('REST: a short rate limit is waited out and tried again; a long one says how long', async () => {
+  let n = 0;
+  const waits = /** @type {number[]} */ ([]);
+  const api = rest({
+    token: 'tkn',
+    sleep: async ms => void waits.push(ms),
+    fetch: /** @type {any} */ (
+      async () =>
+        ++n === 1
+          ? Response.json({ message: 'You are being rate limited.', retry_after: 0.6 }, { status: 429 })
+          : Response.json({ id: '1', username: 'bot' })
+    ),
+  });
+  assert.deepEqual(await api.me(), { id: '1', username: 'bot' });
+  assert.deepEqual(waits, [700]);
+  const slow = rest({
+    token: 'tkn',
+    sleep: async () => {},
+    fetch: /** @type {any} */ (async () => Response.json({ retry_after: 42.5 }, { status: 429 })),
+  });
+  await assert.rejects(slow.guilds(), /rate limiting Media Review: try again in 43 seconds/);
+});

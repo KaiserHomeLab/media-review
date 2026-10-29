@@ -313,10 +313,18 @@ function botRunner(ctx) {
       rest: api,
       log: ctx.log,
       onStatus: s => (status = s),
+      // Discord limits registering commands, and every reconnect is a READY: only send them when they changed.
       onReady: async ready => {
         appId = ready.applicationId;
-        await api.setCommands(appId, cfg.guildId, COMMANDS);
-        ctx.log(`Discord: connected as ${ready.username}, commands ready in ${cfg.guildName}`);
+        const sig = crypto
+          .createHash('sha256')
+          .update(JSON.stringify([appId, cfg.guildId, COMMANDS]))
+          .digest('hex');
+        if (ctx.store.getSetting('discordCommands') !== sig) {
+          await api.setCommands(appId, cfg.guildId, COMMANDS);
+          ctx.store.setSetting('discordCommands', sig);
+          ctx.log(`Discord: connected as ${ready.username}, commands ready in ${cfg.guildName}`);
+        } else ctx.log(`Discord: connected as ${ready.username}`);
       },
       // Only the Owner's server; the bot may be in others.
       onInteraction: i => (i.guild_id === cfg.guildId ? handle(ctx, api, appId, i) : undefined),

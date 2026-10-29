@@ -19,12 +19,15 @@ const EPHEMERAL = 64; // only the person who used the command sees the reply
 
 /** @typedef {typeof fetch} Fetch */
 
-/** @param {{ token: string, fetch?: Fetch, api?: string }} cfg */
+/** @param {{ token: string, fetch?: Fetch, api?: string, sleep?: (ms: number) => Promise<void> }} cfg */
 function rest(cfg) {
+  const sleep = cfg.sleep ?? (ms => new Promise(r => setTimeout(r, ms)));
   const f = cfg.fetch ?? fetch;
   const base = cfg.api ?? API;
-  /** @param {string} method @param {string} path @param {unknown} [body] */
-  const call = async (method, path, body) => {
+  // Discord says how long to wait when it rate limits (retry_after, seconds): wait that long and try again,
+  // twice at most, when it's short; say how long when it isn't.
+  /** @param {string} method @param {string} path @param {unknown} [body] @param {number} [tries] @returns {Promise<any>} */
+  const call = async (method, path, body, tries = 0) => {
     let res;
     try {
       res = await f(base + path, {
@@ -41,6 +44,15 @@ function rest(cfg) {
       throw new Error(`couldn't reach Discord (${e?.cause?.message ?? e.message})`, { cause: e });
     }
     if (res.status === 401) throw new Error('Discord refused the bot token');
+    if (res.status === 429) {
+      const info = await res.json().catch(() => null);
+      const wait = Number(info?.retry_after ?? res.headers.get('retry-after') ?? 1);
+      if (wait <= 10 && tries < 2) {
+        await sleep(Math.ceil(wait * 1000) + 100);
+        return call(method, path, body, tries + 1);
+      }
+      throw new Error(`Discord is rate limiting Media Review: try again in ${Math.ceil(wait)} seconds`);
+    }
     if (!res.ok) {
       const detail = await res.json().catch(() => null);
       throw new Error(`Discord answered HTTP ${res.status}${detail?.message ? `: ${detail.message}` : ''}`);

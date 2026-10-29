@@ -29,10 +29,13 @@ const fakePlex = /** @type {any} */ ({
       : [],
 });
 
+/** @type {string[]} the Discord API paths asked for */
+const discordCalls = [];
 // What answers at each address: Plex's /identity, by host.
 /** @type {typeof fetch} */
 const fakeFetch = async (url, init = {}) => {
   const u = new URL(String(url));
+  if (u.hostname === 'discord.com') discordCalls.push(u.pathname);
   // Discord's API, for the bot token: the bot, and the servers it's in.
   if (u.hostname === 'discord.com') {
     if (/** @type {any} */ (init.headers)?.Authorization !== 'Bot good-token') return new Response('', { status: 401 });
@@ -418,11 +421,19 @@ test("Discord in Settings: Test lists the bot's servers, Save needs one of them,
     {
       bot: 'Media Review',
       guilds: [{ id: 'g1', name: 'Home Lab' }],
-      channels: [],
+      guildId: 'g1',
+      channels: [
+        { id: 'c1', name: 'announcements' },
+        { id: 'c2', name: 'owner-only' },
+      ],
       announceChannel: '',
       ownerChannel: '',
     },
   ]);
+  // One Test is one look at the bot and its servers; asking again within a minute doesn't ask Discord again.
+  const before = discordCalls.filter(c => c.endsWith('/users/@me/guilds')).length;
+  await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: 'good-token', guildId: 'g1' } });
+  assert.equal(discordCalls.filter(c => c.endsWith('/users/@me/guilds')).length, before);
   // With the server picked: its text channels, in Discord's order, not voice ones.
   const inGuild = await s.body(
     await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: 'good-token', guildId: 'g1' } }),
