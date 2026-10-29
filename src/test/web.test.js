@@ -37,6 +37,7 @@ const fakePlex = /** @type {any} */ ({
 
 /** @param {{ publicUrl?: string, leavingChanged?: () => void, seerr?: () => any }} [extra] */
 async function setup(extra = {}) {
+  const logs = /** @type {string[]} */ ([]);
   const store = openStore(':memory:');
   store.replaceTitles([
     { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', year: 2020, thumb: '/library/m1/thumb' },
@@ -51,7 +52,7 @@ async function setup(extra = {}) {
     machineId: async () => 'machine',
     settings: DEFAULTS,
     now: () => NOW,
-    log: () => {},
+    log: m => logs.push(m),
     publicDir: path.join(__dirname, '..', 'public'),
     ...extra,
   });
@@ -79,7 +80,7 @@ async function setup(extra = {}) {
   const post = (cookie, p) =>
     req(p, { method: 'POST', cookie, headers: { 'content-type': 'application/json' }, body: '{}' });
 
-  return { store, req, signIn, post };
+  return { store, req, signIn, post, logs };
 }
 
 test('sign-in starts at plex.tv and comes back to the callback', async () => {
@@ -599,4 +600,44 @@ test('Gone from the web app: friends ask to bring it back, the Owner and Media O
   assert.deepEqual([mine.title, mine.outcome, mine.ownerNote], ['Dull Movie', 'brought-back', 'Back tonight']);
   const [bobs] = (await (await req('/api/asks', { cookie: bob })).json()).asks;
   assert.deepEqual([bobs.outcome, bobs.ownerNote], ['declined', 'no']);
+});
+
+test("Connecting Discord: the bot's one-time link connects the signed-in Plex account, once", async () => {
+  const { store, req, signIn, post } = await setup();
+  const [alice, bob] = await Promise.all([2, 3].map(async pin => (await signIn(pin)).cookie));
+  store.addLinkToken('tok-for-alice-0001', 'd-alice', 'alice#1', NOW - 60);
+  store.addLinkToken('tok-too-old-000001', 'd-old', null, NOW - 31 * 60);
+
+  assert.equal((await req('/api/discord/link/tok-for-alice-0001')).status, 401, 'signed in only');
+  assert.deepEqual(await (await req('/api/discord/link/tok-for-alice-0001', { cookie: alice })).json(), {
+    discordName: 'alice#1',
+  });
+  assert.equal((await req('/api/discord/link/tok-too-old-000001', { cookie: alice })).status, 404, 'expired');
+  assert.deepEqual(await (await post(alice, '/api/discord/link/tok-for-alice-0001')).json(), {
+    linked: true,
+    discordName: 'alice#1',
+  });
+  assert.equal(store.linkOf('d-alice')?.plex_id, 'a');
+  assert.equal((await post(bob, '/api/discord/link/tok-for-alice-0001')).status, 404, 'used up');
+
+  const mine = await (await req('/api/discord', { cookie: alice })).json();
+  assert.equal(mine.linked.name, 'alice#1');
+  assert.equal((await (await req('/api/discord', { cookie: bob })).json()).linked, null);
+  assert.deepEqual(await (await post(alice, '/api/discord/unlink')).json(), { unlinked: true });
+  assert.equal(store.linkOf('d-alice'), undefined);
+});
+
+test('every Owner and Media Ops route answers once: nothing logs a second answer', async () => {
+  const { req, signIn, post, logs } = await setup();
+  const owner = (await signIn(1)).cookie;
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+  for (const p of ['/review-queue', '/leaving-soon', '/problem-reports', '/held-back']) {
+    assert.equal((await req(`/api/v1${p}`, { headers: { 'x-api-key': apiKey } })).status, 200);
+    assert.equal((await req(`/api/owner${p}`, { cookie: owner })).status, 200);
+  }
+  assert.equal((await req('/api/owner/rules', { cookie: owner })).status, 200);
+  assert.deepEqual(
+    logs.filter(m => /failed/.test(m)),
+    [],
+  );
 });

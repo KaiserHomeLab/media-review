@@ -38,8 +38,8 @@ const GROUPS = [
   ['Deleting what you Remove', ['radarr', 'sonarr', 'sonarrAnime']],
   ['Holding back what was deleted', ['seerr']],
 ];
-const ICON = { plex: 'PX', tautulli: 'TA', radarr: 'RA', sonarr: 'SO', sonarrAnime: 'SA', seerr: 'SE' };
-let S = { plex: null, apps: [] };
+const ICON = { plex: 'PX', tautulli: 'TA', radarr: 'RA', sonarr: 'SO', sonarrAnime: 'SA', seerr: 'SE', discord: 'DC' };
+let S = { plex: null, apps: [], discord: null };
 /** @type {Record<string, { up: boolean, text: string }>} */
 const appStatus = {};
 
@@ -66,21 +66,30 @@ function tile(id, name, kind, url) {
   b.addEventListener('click', () =>
     id === 'plex'
       ? plexForm()
-      : appForm(
-          S.apps.find(a => a.id === id),
-          true,
-        ),
+      : id === 'discord'
+        ? discordForm(true)
+        : appForm(
+            S.apps.find(a => a.id === id),
+            true,
+          ),
   );
   return b;
 }
 
 function renderApps() {
   const added = S.apps.filter(a => a.url);
-  $('apps-count').textContent = `${added.length + (S.plex ? 1 : 0)} connected`;
+  $('apps-count').textContent = `${added.length + (S.plex ? 1 : 0) + (S.discord ? 1 : 0)} connected`;
   const tiles = [];
   if (S.plex) tiles.push(tile('plex', 'Plex', S.plex.name, S.plex.url));
   for (const a of added) tiles.push(tile(a.id, a.label, a.needed.split('.')[0], a.url));
-  if (added.length < S.apps.length) {
+  if (S.discord) {
+    const st = S.discord.status;
+    appStatus.discord = st?.connected
+      ? { up: true, text: 'Connected' }
+      : { up: false, text: st?.error ?? 'Connecting…' };
+    tiles.push(tile('discord', 'Discord', `Bot in ${S.discord.guildName}`, `@${S.discord.botName}`));
+  } else delete appStatus.discord;
+  if (added.length < S.apps.length || !S.discord) {
     const add = el('button', 'app-card add');
     add.type = 'button';
     add.append(el('span', 'plus', '+'), el('span', '', 'Add app'));
@@ -121,6 +130,16 @@ function openPicker() {
       b.addEventListener('click', () => appForm(a, false));
       grid.append(b);
     }
+    body.push(grid);
+  }
+  if (!S.discord) {
+    body.push(el('h3', 'pick-group', 'Friends use it from Discord'));
+    const grid = el('div', 'pick-grid');
+    const b = el('button', 'pick');
+    b.type = 'button';
+    b.append(icon('discord'), document.createTextNode('Discord'));
+    b.addEventListener('click', () => discordForm(false));
+    grid.append(b);
     body.push(grid);
   }
   openModal('Add app', body);
@@ -192,6 +211,92 @@ function appForm(a, editing) {
   form.append(el('p', 'muted', a.needed), field('Address', url), field('API key', key, a.keyHelp), actions);
   openModal(editing ? a.label : `Add ${a.label}`, [form]);
   url.focus();
+}
+
+// Discord: your own bot, made in Discord's Developer Portal. Paste its token, Test lists the servers it's in,
+// pick yours, Save. The token never comes back to the browser.
+function discordForm(editing) {
+  const token = Object.assign(el('input', ''), {
+    type: 'password',
+    autocomplete: 'off',
+    placeholder: editing ? '•••••••••••• saved: leave blank to keep' : '',
+  });
+  const guild = /** @type {HTMLSelectElement} */ (el('select', ''));
+  const guildField = field('Server', guild, 'Commands work in this server only.');
+  guildField.hidden = true;
+  const result = el('span', 'result');
+  const steps = el('ol', 'steps');
+  for (const s of [
+    'Open discord.com/developers/applications and press New Application. Name it, e.g. Media Review.',
+    'Bot → Reset Token, and copy the token. No privileged intents are needed.',
+    'OAuth2 → URL Generator: tick bot and applications.commands, open the link it makes, and add the bot to your server.',
+    'Paste the token here, press Test, pick the server, and Save.',
+  ])
+    steps.append(el('li', '', s));
+  const button = (label, cls, fn) => {
+    const b = el('button', cls, label);
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      result.textContent = '';
+      try {
+        await fn();
+      } catch (e) {
+        say(result, e.message, false);
+      }
+      b.disabled = false;
+    });
+    return b;
+  };
+  const test = async () => {
+    const { bot, guilds } = await api('/api/owner/settings/discord/test', 'POST', { token: token.value });
+    if (!guilds.length)
+      return say(result, `${bot} works, but isn't in any server yet: add it to yours (step 3).`, false);
+    guild.replaceChildren(
+      ...guilds.map(g => Object.assign(document.createElement('option'), { value: g.id, textContent: g.name })),
+    );
+    if (S.discord?.guildId) guild.value = S.discord.guildId;
+    guildField.hidden = false;
+    say(result, `Works: ${bot}`, true);
+  };
+  const actions = el('div', 'actions');
+  actions.append(
+    editing
+      ? button('Delete', 'btn ghost danger', async () => {
+          if (!confirm('Remove the Discord bot? It disconnects, and friends can no longer use its commands.')) return;
+          await api('/api/owner/settings/discord', 'DELETE', {});
+          modal.close();
+          load();
+        })
+      : button('← Back', 'btn ghost', async () => openPicker()),
+    el('span', 'spacer'),
+    result,
+    button('Test', 'btn', test),
+    button('Save', 'btn primary', async () => {
+      if (guildField.hidden) await test();
+      if (guildField.hidden) return;
+      await api('/api/owner/settings/discord', 'PUT', { token: token.value, guildId: guild.value });
+      modal.close();
+      await load();
+      // It takes a moment to connect: look again shortly.
+      setTimeout(() => load().catch(() => {}), 4000);
+    }),
+  );
+  const form = el('div', 'form');
+  form.append(
+    el(
+      'p',
+      'muted',
+      'Friends Downvote, withdraw, object and report from Discord with slash commands. Replies are private to them.',
+    ),
+    ...(editing ? [] : [steps]),
+    field('Bot token', token, editing ? `@${S.discord.botName} in ${S.discord.guildName}` : undefined),
+    guildField,
+    actions,
+  );
+  openModal(editing ? 'Discord' : 'Add Discord', [form]);
+  if (editing) test().catch(e => say(result, e.message, false));
+  token.focus();
 }
 
 // Plex was linked at setup: only its address can change, and it must still be the same server.

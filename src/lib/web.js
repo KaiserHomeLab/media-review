@@ -22,6 +22,8 @@ const {
 } = require('./review');
 const problems = require('./problems');
 const holdback = require('./holdback');
+const { rest: discordRest } = require('./discord');
+const { LINK_MINUTES } = require('./bot');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -68,7 +70,8 @@ async function readJson(req) {
  *   leavingChanged?: () => void, apps: import('./apps').AppSettings, setupCode?: () => string | null,
  *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch,
  *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings>,
- *   seerr?: () => import('./seerr').Seerr | null }} ctx
+ *   seerr?: () => import('./seerr').Seerr | null,
+ *   discordStatus?: () => { connected: boolean, error: string | null } | null }} ctx
  *   seerr: Seerr as set up on the Settings page right now, or null
  *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
  *   setupCode: the one-time code printed in the log until first setup is done
@@ -91,13 +94,16 @@ function createApp({
   fetch: f = fetch,
   rules,
   seerr = () => null,
+  discordStatus = () => null,
 }) {
   // The public address: from the container (tests) or the Settings page, read fresh each time.
   const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
   /** @param {Res} res @param {number} status @param {unknown} body */
+  // Answers, and returns true, so a route that answered says so ("handled") and nothing answers twice.
   const json = (res, status, body) => {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(body));
+    return true;
   };
   /** @param {Res} res @param {string} to @param {string[]} [cookies] */
   const redirect = (res, to, cookies = []) => {
@@ -278,6 +284,14 @@ function createApp({
       return json(res, 200, {
         plex: all.plex ? { name: all.plex.name, url: all.plex.url } : null,
         publicUrl: all.publicUrl ?? '',
+        discord: all.discord
+          ? {
+              botName: all.discord.botName,
+              guildId: all.discord.guildId,
+              guildName: all.discord.guildName,
+              status: discordStatus(),
+            }
+          : null,
         apps: Object.entries(APPS).map(([id, a]) => ({
           id,
           ...a,
@@ -303,6 +317,34 @@ function createApp({
       appsChanged();
       log(`settings: Plex address set to ${url}`);
       return json(res, 200, { url });
+    }
+    // Discord: the bot token (never sent back) and the server it works in. Test lists the bot's servers.
+    if (sub === '/discord' || sub === '/discord/test') {
+      if (m === 'DELETE' && sub === '/discord') {
+        apps.setDiscord(null);
+        appsChanged();
+        log('settings: Discord removed');
+        return json(res, 200, { removed: true });
+      }
+      if (m !== (sub === '/discord' ? 'PUT' : 'POST')) return json(res, 404, { error: 'not found' });
+      const body = await readJson(req);
+      const token = String(body.token ?? '').trim() || all.discord?.token || '';
+      if (!token) return json(res, 400, { error: 'paste the bot token' });
+      const d = discordRest({ token, fetch: f });
+      let bot, guilds;
+      try {
+        [bot, guilds] = await Promise.all([d.me(), d.guilds()]);
+      } catch (e) {
+        return json(res, 502, { error: e.message });
+      }
+      if (sub === '/discord/test')
+        return json(res, 200, { bot: bot.username, guilds: guilds.map(g => ({ id: g.id, name: g.name })) });
+      const guild = guilds.find(g => g.id === String(body.guildId ?? ''));
+      if (!guild) return json(res, 400, { error: 'pick a server the bot is in' });
+      apps.setDiscord({ token, guildId: guild.id, guildName: guild.name, botName: bot.username });
+      appsChanged();
+      log(`settings: Discord saved (${bot.username} in ${guild.name})`);
+      return json(res, 200, { saved: true });
     }
     const a = sub.match(/^\/apps\/(\w+)(\/test)?$/);
     const id = /** @type {import('./apps').AppId} */ (a?.[1]);
@@ -502,6 +544,34 @@ function createApp({
 
     const reported = await problemRoute(req, res, m, p, s);
     if (reported !== null) return reported;
+
+    // Discord: whether this person's Discord is connected, connecting it from the bot's one-time link, and
+    // disconnecting it. The link only works signed in, so it connects the Plex account that's signed in.
+    if (m === 'GET' && p === '/api/discord') {
+      const l = store.linkFor(s.plexId);
+      return json(res, 200, {
+        enabled: !!apps.read().discord,
+        guildName: apps.read().discord?.guildName ?? null,
+        linked: l ? { name: l.discord_name, at: new Date(l.linked_at * 1000).toISOString() } : null,
+      });
+    }
+    if (m === 'POST' && p === '/api/discord/unlink') {
+      const was = store.unlink(s.plexId);
+      if (was) log(`Discord unlinked from the web app`);
+      return json(res, 200, { unlinked: was });
+    }
+    const dl = p.match(/^\/api\/discord\/link\/([\w-]{16,64})$/);
+    if (dl) {
+      const t = store.linkToken(dl[1], now() - LINK_MINUTES * 60);
+      if (!t)
+        return json(res, 404, { error: 'That link has expired or was used. Use /link in Discord for a new one.' });
+      if (m === 'GET') return json(res, 200, { discordName: t.discord_name });
+      if (m === 'POST') {
+        store.link(t.discord_id, s.plexId, t.discord_name, now());
+        log(`Discord linked: ${t.discord_name ?? t.discord_id} is ${store.voter(s.plexId)?.username ?? 'the Owner'}`);
+        return json(res, 200, { linked: true, discordName: t.discord_name });
+      }
+    }
 
     // Gone: what was deleted and is held back from Seerr. Friends ask the Owner to bring it back.
     if (m === 'GET' && p === '/api/gone') return json(res, 200, { gone: holdback.gone(store, s.plexId) });

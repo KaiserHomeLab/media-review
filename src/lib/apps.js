@@ -13,6 +13,7 @@ const { seerr } = require('./seerr');
 /** @typedef {import('./http').Fetch} Fetch */
 /** @typedef {{ url: string, apiKey: string }} AppConfig */
 /** @typedef {{ url: string, token: string, machineId: string, name: string }} PlexConfig */
+/** @typedef {{ token: string, guildId: string, guildName: string, botName: string }} DiscordConfig */
 
 // The apps on the Settings page, in order. Plex is set up separately, by signing in.
 const APPS = /** @type {const} */ ({
@@ -54,7 +55,7 @@ const KEY = 'apps';
 
 /** @param {import('./store').Store} store */
 function appSettings(store) {
-  /** @returns {{ plex?: PlexConfig, publicUrl?: string } & Partial<Record<AppId, AppConfig>>} */
+  /** @returns {{ plex?: PlexConfig, publicUrl?: string, discord?: DiscordConfig } & Partial<Record<AppId, AppConfig>>} */
   const read = () => {
     try {
       return JSON.parse(store.getSetting(KEY) ?? '{}');
@@ -83,6 +84,8 @@ function appSettings(store) {
     setApp: (id, cfg) => update(all => void (all[id] = cfg)),
     /** @param {AppId} id */
     removeApp: id => update(all => void delete all[id]),
+    /** @param {DiscordConfig | null} cfg null removes it */
+    setDiscord: cfg => update(all => void (cfg ? (all.discord = cfg) : delete all.discord)),
     /** @param {string} url '' clears it */
     setPublicUrl: url => update(all => void (url ? (all.publicUrl = url) : delete all.publicUrl)),
   };

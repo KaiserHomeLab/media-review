@@ -19,6 +19,7 @@ const { syncLeavingSoon } = require('./lib/collections');
 const { appSettings, arrsFrom, seerrFrom } = require('./lib/apps');
 const { holdBack } = require('./lib/holdback');
 const { runDeletions } = require('./lib/deletions');
+const { botRunner } = require('./lib/bot');
 
 const dataDir = process.env.DATA_DIR ?? path.join(__dirname, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
@@ -100,6 +101,19 @@ const updateCollections = () => {
   return collections;
 };
 
+// The Discord bot, when it's set up under Settings.
+const bot = botRunner({
+  store,
+  settings,
+  now,
+  log,
+  plex,
+  publicUrl: () => (apps.read().publicUrl ?? '').replace(/\/+$/, '') || null,
+  leavingChanged: () => void updateCollections(),
+  config: () => apps.read().discord,
+});
+bot.refresh();
+
 const app = createApp({
   store,
   plex,
@@ -110,6 +124,7 @@ const app = createApp({
   publicDir: path.join(__dirname, 'public'),
   leavingChanged: () => void updateCollections(),
   seerr: () => seerrFrom(apps),
+  discordStatus: () => bot.status(),
   apps,
   rules,
   setupCode: () => setupCode,
@@ -117,7 +132,10 @@ const app = createApp({
     setupCode = null;
   },
   // A new or changed app: sync now rather than in up to 15 minutes.
-  appsChanged: () => void runSync(),
+  appsChanged: () => {
+    bot.refresh();
+    void runSync();
+  },
 });
 const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));

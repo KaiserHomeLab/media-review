@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT · Copyright (c) 2026 KaiserHomeLab · Media Review: connect a Discord account, from the bot's one-time link. Filled in by link.js. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Review · Connect Discord</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23e5a00d'/><path d='M9 12h14l-7 10z' fill='%231a1a19'/></svg>" />
+    <meta name="theme-color" content="#121211" />
+    <link rel="preload" href="fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="style.css" />
+    <script src="link.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/">
+        <span class="logo" aria-hidden="true"></span>
+        <div>
+          <h1>Media Review</h1>
+          <div class="sub">connect Discord</div>
+        </div>
+      </a>
+    </header>
+    <main class="narrow">
+      <section class="card form" id="card">
+        <h2>Connect Discord</h2>
+        <p id="text" class="muted">Checking the link…</p>
+        <p class="notice error" id="error" hidden></p>
+        <div class="actions">
+          <a class="btn primary" id="signin" href="/auth/plex" hidden>Sign in with Plex</a>
+          <button class="btn primary" type="button" id="connect" hidden>Connect</button>
+          <a class="btn ghost" id="home" href="/" hidden>Go to Media Review</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
