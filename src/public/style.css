@@ -940,3 +940,16 @@ code {
   color: var(--held);
   border-color: color-mix(in srgb, var(--held) 45%, var(--line));
 }
+
+/* A row with no poster (a Voter's own reports and asks): just the words, then the button. */
+.queue .entry.text {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+@media (max-width: 640px) {
+  .queue .entry.text {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .queue .entry.text .acts {
+    grid-column: 1;
+  }
+}

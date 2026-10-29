@@ -399,7 +399,7 @@ async function loadAsks() {
   $('asks-count').textContent = open ? `${open} waiting` : 'all answered';
   $('asks').replaceChildren(
     ...asks.map(a => {
-      const li = el('li', 'entry');
+      const li = el('li', 'entry text');
       const main = el('div', 'main');
       const head = el('div', 'head');
       head.append(el('b', '', a.title));
@@ -436,7 +436,7 @@ async function loadReports() {
   $('reports-count').textContent = open ? `${open} open` : 'all dealt with';
   $('reports').replaceChildren(
     ...problemReports.map(r => {
-      const li = el('li', 'entry');
+      const li = el('li', 'entry text');
       const main = el('div', 'main');
       const head = el('div', 'head');
       head.append(el('b', '', r.title.name ?? 'A title no longer in the library'));
