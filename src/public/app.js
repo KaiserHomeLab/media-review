@@ -27,6 +27,9 @@ const ERRORS = {
   'already-reported': "You've already reported this problem.",
   'not-open': 'The Owner has already dealt with that report.',
   'not-reported': "You weren't on that report.",
+  'already-asked': 'You already asked for this back.',
+  'not-gone': 'This is no longer held back.',
+  'not-asked': "You hadn't asked for this.",
 };
 
 async function api(path, opts = {}) {
@@ -307,6 +310,121 @@ async function openReport(t) {
   if (!modal.open) modal.showModal();
 }
 
+// ------------------------------------------------------------------ Gone: asking for it back
+// A deleted Title can't be requested in Seerr any more; a friend asks the Owner here instead.
+function goneCard(g) {
+  const li = el('li', 'tile');
+  const img = el(g.poster ? 'img' : 'div', 'poster');
+  if (g.poster) Object.assign(img, { src: g.poster, alt: '', loading: 'lazy' });
+  const body = el('div', 'body');
+  const meta = el('div', 'meta');
+  meta.append(el('span', 'chip', g.library ?? (g.kind === 'movie' ? 'Movie' : 'Show')));
+  if (g.year) meta.append(el('span', 'chip', String(g.year)));
+  meta.append(el('span', 'chip held', `↺ Deleted ${shortDate(g.deletedAt)}`));
+  body.append(el('div', 'name', g.title), meta);
+  const acts = el('div', 'acts');
+  if (me.isOwner) acts.append(el('div', 'state', 'Bring it back from the Review Queue page'));
+  else if (g.asked) {
+    const w = el('button', 'btn small ghost', 'Withdraw');
+    w.type = 'button';
+    w.addEventListener('click', async () => {
+      w.disabled = true;
+      try {
+        await api(`/api/gone/${encodeURIComponent(g.ratingKey)}/withdraw`, { method: 'POST', body: '{}' });
+        g.asked = false;
+      } catch (e) {
+        showError(ERRORS[e.message] ?? e.message);
+      }
+      li.replaceWith(goneCard(g));
+      loadAsks();
+    });
+    acts.append(el('div', 'state', 'You asked for it back'), w);
+  } else {
+    const b = el('button', 'btn small', '↺ Ask to bring it back');
+    b.type = 'button';
+    b.addEventListener('click', () => askForm(g, li));
+    acts.append(b, el('div', 'note', "It can't be requested in Seerr: the Owner decides."));
+  }
+  body.append(acts);
+  li.append(img, body);
+  return li;
+}
+
+function askForm(g, li) {
+  const note = /** @type {HTMLTextAreaElement} */ (el('textarea', ''));
+  Object.assign(note, {
+    maxLength: 500,
+    rows: 3,
+    placeholder: "e.g. I never got to finish it, or it's my kid's favourite",
+  });
+  const err = el('p', 'notice error');
+  err.hidden = true;
+  const send = el('button', 'btn primary', 'Ask the Owner');
+  send.type = 'button';
+  send.addEventListener('click', async () => {
+    send.disabled = true;
+    try {
+      await api(`/api/gone/${encodeURIComponent(g.ratingKey)}/ask`, {
+        method: 'POST',
+        body: JSON.stringify({ note: note.value }),
+      });
+      g.asked = true;
+      modal.close();
+      li.replaceWith(goneCard(g));
+      showNotice("Asked. You'll see here what the Owner decides.");
+      loadAsks();
+    } catch (e) {
+      err.textContent = ERRORS[e.message] ?? e.message;
+      err.hidden = false;
+      send.disabled = false;
+    }
+  });
+  const form = el('div', 'report-form');
+  const actions = el('div', 'actions');
+  actions.append(el('span', 'muted', 'The Owner sees why it was removed before deciding.'), el('span', 'spacer'), send);
+  form.append(field('Why do you want it back?', note, 'Optional'), err, actions);
+  $('modal-title').textContent = `Bring back ${g.title}?`;
+  $('modal-body').replaceChildren(form);
+  if (!modal.open) modal.showModal();
+  note.focus();
+}
+
+const ASKED = { 'brought-back': 'Brought back', declined: 'Declined' };
+
+// The Voter's asks: open ones, and what the Owner decided on the rest (for 30 days).
+async function loadAsks() {
+  const { asks } = await api('/api/asks');
+  $('asks-card').hidden = !asks.length;
+  const open = asks.filter(a => !a.outcome).length;
+  $('asks-count').textContent = open ? `${open} waiting` : 'all answered';
+  $('asks').replaceChildren(
+    ...asks.map(a => {
+      const li = el('li', 'entry text');
+      const main = el('div', 'main');
+      const head = el('div', 'head');
+      head.append(el('b', '', a.title));
+      if (a.year) head.append(el('span', 'muted', ` (${a.year})`));
+      const chips = el('div', 'meta');
+      chips.append(
+        a.outcome
+          ? el(
+              'span',
+              a.outcome === 'brought-back' ? 'chip good' : 'chip',
+              `${ASKED[a.outcome]} ${shortDate(a.decidedAt)}`,
+            )
+          : el('span', 'chip kind', 'Waiting for the Owner'),
+      );
+      main.append(head, chips);
+      if (a.outcome === 'brought-back')
+        main.append(el('div', 'line', "It's been requested: it's back once it has downloaded."));
+      if (a.ownerNote) main.append(el('div', 'line', `Owner: ${a.ownerNote}`));
+      else if (a.note) main.append(el('div', 'line muted', `You said: ${a.note}`));
+      li.append(main);
+      return li;
+    }),
+  );
+}
+
 /** @param {string} iso */
 const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
@@ -318,7 +436,7 @@ async function loadReports() {
   $('reports-count').textContent = open ? `${open} open` : 'all dealt with';
   $('reports').replaceChildren(
     ...problemReports.map(r => {
-      const li = el('li', 'entry');
+      const li = el('li', 'entry text');
       const main = el('div', 'main');
       const head = el('div', 'head');
       head.append(el('b', '', r.title.name ?? 'A title no longer in the library'));
@@ -365,13 +483,23 @@ try {
 } catch {}
 let query = '';
 
-// The Leaving Soon tab; not a Plex library name, which can't start with a NUL.
+// The Leaving Soon and Gone tabs; not Plex library names, which can't start with a NUL.
 const LEAVING = '\u0000leaving';
+const GONE = '\u0000gone';
 
 // One tab per Plex library (Movies, TV Shows, Anime…), named as in Plex, then Leaving Soon when anything is.
 async function loadTabs() {
-  const [{ libraries }, { leavingSoon }] = await Promise.all([api('/api/libraries'), api('/api/leaving-soon')]);
-  if (!libraries.some(l => l.name === library) && !(library === LEAVING && leavingSoon.length)) library = '';
+  const [{ libraries }, { leavingSoon }, { gone }] = await Promise.all([
+    api('/api/libraries'),
+    api('/api/leaving-soon'),
+    api('/api/gone'),
+  ]);
+  if (
+    !libraries.some(l => l.name === library) &&
+    !(library === LEAVING && leavingSoon.length) &&
+    !(library === GONE && gone.length)
+  )
+    library = '';
   const tab = (/** @type {string} */ name, /** @type {string} */ label, /** @type {number} */ n) => {
     const b = el('button', '', label);
     b.type = 'button';
@@ -395,8 +523,14 @@ async function loadTabs() {
     leaving.classList.add('leaving');
     tabs.push(leaving);
   }
+  // Deleted, and held back from Seerr: friends can ask the Owner to bring it back.
+  if (gone.length) {
+    const g = tab(GONE, 'Gone', gone.length);
+    g.classList.add('gone');
+    tabs.push(g);
+  }
   $('tabs').replaceChildren(...tabs);
-  $('tabs').hidden = tabs.length < 3 && !leavingSoon.length;
+  $('tabs').hidden = tabs.length < 3 && !leavingSoon.length && !gone.length;
 }
 
 let pending = 0;
@@ -404,6 +538,15 @@ async function load() {
   const ticket = ++pending;
   const q = query;
   try {
+    if (library === GONE) {
+      const { gone } = await api('/api/gone');
+      if (ticket !== pending) return;
+      const found = gone.filter(g => g.title.toLowerCase().includes(q.toLowerCase()));
+      $('titles').replaceChildren(...found.map(goneCard));
+      $('empty').hidden = found.length > 0;
+      $('count').textContent = `${found.length} gone`;
+      return;
+    }
     const params = new URLSearchParams({ q });
     if (library === LEAVING) params.set('leaving', '1');
     else if (library) params.set('library', library);
@@ -455,6 +598,7 @@ async function start() {
     }, 200);
   });
   if (!me.isOwner) loadReports().catch(e => showError(e.message));
+  if (!me.isOwner) loadAsks().catch(e => showError(e.message));
   await loadTabs().catch(e => showError(e.message));
   load();
 }

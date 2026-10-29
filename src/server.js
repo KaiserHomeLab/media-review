@@ -16,7 +16,8 @@ const { ruleSettings } = require('./lib/rule-settings');
 const { sync } = require('./lib/sync');
 const { createApp } = require('./lib/web');
 const { syncLeavingSoon } = require('./lib/collections');
-const { appSettings, arrsFrom } = require('./lib/apps');
+const { appSettings, arrsFrom, seerrFrom } = require('./lib/apps');
+const { holdBack } = require('./lib/holdback');
 const { runDeletions } = require('./lib/deletions');
 
 const dataDir = process.env.DATA_DIR ?? path.join(__dirname, 'data');
@@ -108,6 +109,7 @@ const app = createApp({
   log,
   publicDir: path.join(__dirname, 'public'),
   leavingChanged: () => void updateCollections(),
+  seerr: () => seerrFrom(apps),
   apps,
   rules,
   setupCode: () => setupCode,
@@ -130,6 +132,7 @@ const runSync = async () => {
     await sync({ store, plex, tautulli: apps.read().tautulli ? tautulli : null, settings, now, log });
     // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up.
     await runDeletions({ store, arrs: arrsFrom(apps), settings, now, log });
+    await holdBack({ store, seerr: seerrFrom(apps), log });
     await updateCollections();
   } finally {
     running = false;

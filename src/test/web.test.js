@@ -35,7 +35,7 @@ const fakePlex = /** @type {any} */ ({
   ],
 });
 
-/** @param {{ publicUrl?: string, leavingChanged?: () => void }} [extra] */
+/** @param {{ publicUrl?: string, leavingChanged?: () => void, seerr?: () => any }} [extra] */
 async function setup(extra = {}) {
   const store = openStore(':memory:');
   store.replaceTitles([
@@ -534,4 +534,69 @@ test('Problem Reports from the web app: a Voter sees only their own, the Owner a
   assert.deepEqual(await (await post(owner, `/api/owner/problem-reports/${two.id}/close`)).json(), { closed: true });
   assert.equal((await (await req('/api/problems', { cookie: bob })).json()).problemReports[0].outcome, 'closed');
   assert.equal((await (await req('/api/problems', { cookie: alice })).json()).problemReports.length, 1);
+});
+
+test('Gone from the web app: friends ask to bring it back, the Owner and Media Ops bring back or decline', async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const fakeSeerr = /** @type {any} */ ({
+    block: async (/** @type {any} */ m) => void calls.push(`block ${m.mediaType}:${m.tmdbId}`),
+    unblock: async (/** @type {any} */ m) => void calls.push(`unblock ${m.mediaType}:${m.tmdbId}`),
+    request: async (/** @type {any} */ m) => void calls.push(`request ${m.mediaType}:${m.tmdbId}`),
+  });
+  const { store, req, signIn, post } = await setup({ seerr: () => fakeSeerr });
+  store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', tmdbId: '603' },
+    { ratingKey: 'm2', kind: 'movie', title: 'Other', tmdbId: '604' },
+  ]);
+  for (const key of ['m1', 'm2']) {
+    store.remove(key, NOW - 20 * 86400, NOW - 86400);
+    store.deleted(key, NOW - 86400, ['Radarr']);
+  }
+  const [owner, alice, bob] = await Promise.all([1, 2, 3].map(async pin => (await signIn(pin)).cookie));
+  /** @param {string} cookie @param {string} p @param {unknown} body */
+  const send = (cookie, p, body) =>
+    req(p, { method: 'POST', cookie, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  const gone = (await (await req('/api/gone', { cookie: alice })).json()).gone;
+  assert.deepEqual(gone.map((/** @type {any} */ g) => [g.title, g.asked]).sort(), [
+    ['Dull Movie', false],
+    ['Other', false],
+  ]);
+  assert.deepEqual(await (await send(alice, '/api/gone/m1/ask', { note: 'please' })).json(), { asked: true });
+  assert.deepEqual(await (await send(alice, '/api/gone/m1/ask', {})).json(), { error: 'already-asked' });
+  assert.equal((await send(owner, '/api/gone/m1/ask', {})).status, 403);
+  await send(bob, '/api/gone/m2/ask', {});
+  assert.doesNotMatch(JSON.stringify((await (await req('/api/gone', { cookie: bob })).json()).gone), /alice|please/);
+
+  // The Owner sees who asked, with the history; Voters can't.
+  assert.equal((await req('/api/owner/held-back', { cookie: alice })).status, 403);
+  const list = (await (await req('/api/owner/held-back', { cookie: owner })).json()).heldBack;
+  assert.deepEqual(
+    list[0].asks.map((/** @type {any} */ a) => [a.voter, a.note]),
+    [['alice', 'please']],
+  );
+  assert.deepEqual(
+    list[0].history.decisions.map((/** @type {any} */ d) => d.decision),
+    ['remove'],
+  );
+
+  // Media Ops brings m1 back; the Owner declines m2.
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+  const key = { 'x-api-key': apiKey, 'content-type': 'application/json' };
+  const back = await req('/api/v1/held-back/m1/bring-back', {
+    method: 'POST',
+    headers: key,
+    body: '{"note":"Back tonight"}',
+  });
+  assert.deepEqual(await back.json(), { broughtBack: true });
+  assert.deepEqual(calls, ['unblock movie:603', 'request movie:603']);
+  assert.deepEqual(await (await send(owner, '/api/owner/held-back/m2/decline', { note: 'no' })).json(), {
+    declined: true,
+  });
+  assert.deepEqual(await (await send(owner, '/api/owner/held-back/m1/decline', {})).json(), { error: 'not-gone' });
+
+  const [mine] = (await (await req('/api/asks', { cookie: alice })).json()).asks;
+  assert.deepEqual([mine.title, mine.outcome, mine.ownerNote], ['Dull Movie', 'brought-back', 'Back tonight']);
+  const [bobs] = (await (await req('/api/asks', { cookie: bob })).json()).asks;
+  assert.deepEqual([bobs.outcome, bobs.ownerNote], ['declined', 'no']);
 });

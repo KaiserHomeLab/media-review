@@ -23,7 +23,7 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - The Owner has a **Review Queue** page with every entry and its details (the same as the Media Ops card) and the decisions: Keep now, Remove (0004) and Problem Reports (0007) later.
 - **First setup** (confirmed by the Owner): a fresh install has no Owner. It prints a one-time setup code in its log, and the setup page asks for it before anything else. Then the Owner signs in with the Plex account that owns the server and picks the server and the address to reach it. Media Review keeps that sign-in's token for Plex. The account that owns the linked server is the Owner from then on.
 - **Settings page** (Owner only; confirmed by the Owner): the apps Media Review works with, each with an address, an API key, **Test** and **Save**.
-  - The apps are Plex (address), Tautulli, Radarr, Sonarr and Sonarr (anime).
+  - The apps are Plex (address), Tautulli, Radarr, Sonarr, Sonarr (anime) and Seerr.
   - The page also has the public address, and the API key for Media Ops, which is only needed if Media Ops is used.
   - Everything is kept in the database in `/config`, not in container variables. Saved keys and the Plex token are never sent back to the browser, and changes apply without a restart.
   - The rules in [Settings](#settings) get a section here next (ticket 0011).
@@ -124,7 +124,14 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 ### Re-requests after deletion
 
 - If anyone requests a deleted Title again, the request goes to the Owner with the Title's history, instead of being approved automatically.
-- The preferred mechanism is Seerr holding back the request. If Seerr can't do that, the Title is blocked in Radarr/Sonarr (for example with an import-list exclusion) so the request lands with the Owner. See open question Q1.
+- Seerr can't hold back one Title's request for the Owner (see Q1), so it works like this (confirmed by the Owner, 0008):
+  - When Media Review deletes a Title, it adds it to Seerr's blocklist. Nobody can request it there. This is called **held back**, and it lasts until the Owner brings the Title back.
+  - Friends see held-back Titles under a **Gone** tab in Media Review, and can **Ask to bring it back**, with an optional note. They see their own asks, and what the Owner decided, for 30 days. They never see who else asked.
+  - The Owner sees each held-back Title with who asked and the Title's history: each Remove's Downvotes (with Vote Weight) and Objections, every Keep and Remove, and each deletion. They choose **Bring back** or **Decline**, with an optional note the friends who asked see. The Owner can bring back a Title nobody asked for.
+  - **Bring back** takes the Title off Seerr's blocklist and requests it there with the API key, so it is approved and downloads. A show is requested with every season. **Decline** answers the asks and the Title stays held back.
+  - If Seerr isn't set up, or Plex has no TMDB id for the Title, it can't be blocked. The Owner sees why, and Media Review tries again after every sync.
+  - Titles deleted before this feature existed are held back once, on upgrade.
+  - The same decisions are in Media Ops (`/api/v1/held-back`).
 
 ### Problem Reports
 
@@ -163,7 +170,7 @@ Changing a setting re-runs the threshold check for every Title that isn't queued
 
 Each one is assigned to the ticket that has to answer it. Answered ones stay here as the record.
 
-- **Q1. Seerr hold-back.** Can Seerr hold back an auto-approved request for a previously Removed Title so it goes to the Owner? Fallback: block it in Radarr/Sonarr. Ticket 0008.
+- **Q1. Seerr hold-back.** *Answered in 0008, from Seerr's source code (3.5.1).* No. Auto-approval depends only on the user's permissions (`AUTO_APPROVE`, `AUTO_APPROVE_MOVIE`, `AUTO_APPROVE_TV`, `MANAGE_REQUESTS`, `ADMIN`), and nothing holds back one Title. The nearest thing is the blocklist: `POST /api/v1/blocklist` with `{ tmdbId, mediaType, title, user }` makes a request for that Title fail with "This media is blocklisted", and `DELETE /api/v1/blocklist/:tmdbId?mediaType=` lifts it. So a deleted Title is blocklisted, and the ask goes through Media Review. The Radarr/Sonarr import-list exclusion was not used as the fallback: it is meant for import lists, it wasn't confirmed whether it stops a request from Seerr, and either way the request would fail in Radarr rather than reach the Owner.
 - **Q2. Anime vs TV.** *Answered by the Owner.* Anime has its own Plex library and its own Sonarr instance. Media Review tells anime from TV by Plex library, and deletes an anime Title through the anime Sonarr. Tickets 0011 and 0005.
 - **Q3. Tautulli play duration.** *Answered in 0001, from Tautulli's API documentation; not yet checked against the Owner's server.* `get_history` with `grouping=0` returns one row per session with `user_id` (the Plex account id), `media_type`, `rating_key` (and `grandparent_rating_key`, the show, for episodes), `play_duration` in seconds with pauses excluded (`duration` before Tautulli 2.13) and `watched_status` (1 when Tautulli counts it as finished: a Watch). Media Review adds these up per Voter per Title. `get_users` lists the Voters: everyone but the admin (the Owner) and the Local user, and only those still active.
 - **Q4. Base Weight curve.** *Answered by the Owner:* a Voter's watch time in the window divided by the heaviest Voter's. Built in 0001.

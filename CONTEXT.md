@@ -74,6 +74,10 @@ _Avoid_: Delete, purge, cull
 The grace period a Removed Title spends visible to everyone, inside Plex itself as well as through announcements, before it is deleted, so anyone can finish it.
 _Avoid_: Pending deletion, death row, last chance
 
+**Held back**:
+A deleted Title that nobody can request again until the Owner brings it back. Anyone can ask the Owner to bring it back; the Owner sees the Title's history, then brings it back (it is requested again) or declines.
+_Avoid_: Banned, blacklisted, locked
+
 **Objection**:
 A Voter's explicit request, made while a Title is Leaving Soon, to send it back to the Owner for another look. Objections carry Vote Weight and must reach a small fixed amount, independent of the Audience, before the Title goes back. A Title can be sent back this way only once: if the Owner Removes it again, its second Leaving Soon allows no Objections. A Voter who Downvoted the Title can't object to it, and a Keep wipes the slate.
 _Avoid_: Save, appeal, veto, upvote

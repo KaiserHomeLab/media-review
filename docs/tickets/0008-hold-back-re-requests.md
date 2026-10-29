@@ -2,6 +2,8 @@
 
 **Blocked by:** 0005
 
+**Status:** Done. Q1 is answered in the spec: Seerr can't hold back one Title, so deleted Titles go on Seerr's blocklist and friends ask in Media Review.
+
 ## What to build
 
 If anyone requests a deleted Title again, the request goes to the Owner with the Title's history instead of being approved automatically.
@@ -12,6 +14,13 @@ If anyone requests a deleted Title again, the request goes to the Owner with the
 
 ## Acceptance criteria
 
-- [ ] A re-request for a deleted Title is not auto-approved, even for a user whose requests normally are.
-- [ ] The Owner can see the Title's history when deciding.
-- [ ] Titles that were never Removed are requested as before.
+- [x] A re-request for a deleted Title is not auto-approved, even for a user whose requests normally are.
+- [x] The Owner can see the Title's history when deciding.
+- [x] Titles that were never Removed are requested as before.
+
+## Decided with the Owner
+
+- Seerr blocklist, and friends ask in Media Review under a Gone tab.
+- Bring back takes it off the blocklist and requests it in Seerr, approved.
+- Held back until the Owner brings it back. No time limit.
+- Decline is allowed, with an optional note the friends see.
