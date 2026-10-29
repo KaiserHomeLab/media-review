@@ -66,6 +66,8 @@ number, a fix the last one.
 
 ### Fixed
 
+- The Owner's pages said "1 days ago"; Building up's "5.31 of 2.65 weight needed" now reads
+  "5.31 weight, 2.65 needed". Settings' hint mentions Seerr and Discord.
 - Unraid's Docker page shows Media Review's icon. The template and the image now name it. On an
   existing install, save the template again (the `wget` from the install steps) and Apply.
 - Discord in Settings no longer fails with "Discord answered HTTP 429: You are being rate limited".
