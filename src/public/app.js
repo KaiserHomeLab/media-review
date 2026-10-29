@@ -391,9 +391,50 @@ function askForm(g, li) {
 
 const ASKED = { 'brought-back': 'Brought back', declined: 'Declined' };
 
+// Clearing a finished report or answered ask from your own list. Nobody else's list changes.
+/** @param {string} path @param {() => Promise<void>} reload */
+function clearButton(path, reload) {
+  const b = el('button', 'btn small ghost', 'Clear');
+  b.type = 'button';
+  b.title = 'Remove it from your list';
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    await api(path, { method: 'POST', body: '{}' }).catch(e => showError(ERRORS[e.message] ?? e.message));
+    reload();
+  });
+  return b;
+}
+/** @param {string} id @param {string} path @param {() => Promise<void>} reload */
+function clearAll(id, path, reload) {
+  $(id).onclick = async () => {
+    await api(path, { method: 'POST', body: '{}' }).catch(e => showError(e.message));
+    reload();
+  };
+}
+clearAll('reports-clear', '/api/problems/dismiss-finished', () => loadReports());
+clearAll('asks-clear', '/api/asks/dismiss-finished', () => loadAsks());
+
+// What changed since the last look: a report or ask that has just been answered gets a notice. The first
+// look only takes note, so opening the page doesn't announce old news.
+const known = { reports: /** @type {Map<number, string | null> | null} */ (null), asks: null };
+/** @param {'reports' | 'asks'} list @param {Array<{ id: number, outcome: string | null }>} items @param {(x: any) => string} say */
+function news(list, items, say) {
+  const before = known[list];
+  known[list] = new Map(items.map(x => [x.id, x.outcome]));
+  if (!before) return;
+  const fresh = items.filter(x => x.outcome && before.has(x.id) && !before.get(x.id));
+  if (fresh.length) showNotice(fresh.map(say).join(' '));
+}
+
 // The Voter's asks: open ones, and what the Owner decided on the rest (for 30 days).
 async function loadAsks() {
   const { asks } = await api('/api/asks');
+  news('asks', asks, a =>
+    a.outcome === 'brought-back'
+      ? `The Owner is bringing back ${a.title}.`
+      : `The Owner declined bringing back ${a.title}${a.ownerNote ? `: ${a.ownerNote}` : '.'}`,
+  );
+  $('asks-clear').hidden = !asks.some(a => a.outcome);
   $('asks-card').hidden = !asks.length;
   const open = asks.filter(a => !a.outcome).length;
   $('asks-count').textContent = open ? `${open} waiting` : 'all answered';
@@ -420,6 +461,11 @@ async function loadAsks() {
       if (a.ownerNote) main.append(el('div', 'line', `Owner: ${a.ownerNote}`));
       else if (a.note) main.append(el('div', 'line muted', `You said: ${a.note}`));
       li.append(main);
+      if (a.outcome) {
+        const acts = el('div', 'acts');
+        acts.append(clearButton(`/api/asks/${a.id}/dismiss`, () => loadAsks()));
+        li.append(acts);
+      }
       return li;
     }),
   );
@@ -453,6 +499,13 @@ const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { day: 'num
 // The Voter's own reports: open ones, and what the Owner did with the rest (for 30 days).
 async function loadReports() {
   const { problemReports } = await api('/api/problems');
+  news(
+    'reports',
+    problemReports,
+    r =>
+      `Your Problem Report on ${r.title.name ?? 'a title'} was ${r.outcome}${r.ownerNote ? `: ${r.ownerNote}` : '.'}`,
+  );
+  $('reports-clear').hidden = !problemReports.some(r => r.outcome);
   $('reports-card').hidden = !problemReports.length;
   const open = problemReports.filter(r => !r.outcome).length;
   $('reports-count').textContent = open ? `${open} open` : 'all dealt with';
@@ -490,6 +543,10 @@ async function loadReports() {
         });
         const acts = el('div', 'acts');
         acts.append(b);
+        li.append(acts);
+      } else {
+        const acts = el('div', 'acts');
+        acts.append(clearButton(`/api/problems/${r.id}/dismiss`, () => loadReports()));
         li.append(acts);
       }
       return li;
@@ -623,8 +680,13 @@ async function start() {
       load();
     }, 200);
   });
-  if (!me.isOwner) loadReports().catch(e => showError(e.message));
-  if (!me.isOwner) loadAsks().catch(e => showError(e.message));
+  if (!me.isOwner) {
+    const mine = () => Promise.all([loadReports(), loadAsks()]).catch(() => {});
+    mine();
+    // Keep them current without a reload: every minute while the page is in view, and on coming back to it.
+    setInterval(() => document.visibilityState === 'visible' && mine(), 60000);
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && mine());
+  }
   loadDiscord().catch(() => {});
   await loadTabs().catch(e => showError(e.message));
   load();

@@ -100,6 +100,7 @@ function asksBy(store, voterId, now) {
   return store.asksBy(voterId, now - SHOW_DECIDED_DAYS * 86400).map(a => {
     const t = store.title(a.title_key);
     return {
+      id: a.id,
       ratingKey: a.title_key,
       title: t?.title ?? 'Unknown title',
       year: t?.year ?? null,
