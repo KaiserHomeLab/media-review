@@ -641,3 +641,14 @@ test('every Owner and Media Ops route answers once: nothing logs a second answer
     [],
   );
 });
+
+test('an announced poster is fetched by its signed link without signing in; nothing else is', async () => {
+  const { store, req } = await setup();
+  const { posterSig } = require('../lib/notices');
+  const ok = await req(`/cover/m1/${posterSig(store, 'm1')}`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('content-type'), 'image/jpeg');
+  assert.equal((await req(`/cover/m1/${'x'.repeat(22)}`)).status, 404);
+  assert.equal((await req(`/cover/m2/${posterSig(store, 'm1')}`)).status, 404);
+  assert.equal((await req('/poster/m1')).status, 401, 'the normal poster still needs a session');
+});

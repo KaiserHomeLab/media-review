@@ -24,6 +24,7 @@ const problems = require('./problems');
 const holdback = require('./holdback');
 const { rest: discordRest } = require('./discord');
 const { LINK_MINUTES } = require('./bot');
+const { posterOk } = require('./notices');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -71,7 +72,7 @@ async function readJson(req) {
  *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch,
  *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings>,
  *   seerr?: () => import('./seerr').Seerr | null,
- *   discordStatus?: () => { connected: boolean, error: string | null } | null }} ctx
+ *   discordStatus?: () => { connected: boolean, error: string | null, postError?: string | null } | null }} ctx
  *   seerr: Seerr as set up on the Settings page right now, or null
  *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
  *   setupCode: the one-time code printed in the log until first setup is done
@@ -289,6 +290,8 @@ function createApp({
               botName: all.discord.botName,
               guildId: all.discord.guildId,
               guildName: all.discord.guildName,
+              announceChannel: all.discord.announceChannel ?? '',
+              ownerChannel: all.discord.ownerChannel ?? '',
               status: discordStatus(),
             }
           : null,
@@ -337,11 +340,46 @@ function createApp({
       } catch (e) {
         return json(res, 502, { error: e.message });
       }
-      if (sub === '/discord/test')
-        return json(res, 200, { bot: bot.username, guilds: guilds.map(g => ({ id: g.id, name: g.name })) });
       const guild = guilds.find(g => g.id === String(body.guildId ?? ''));
+      // The server's text channels, for announcements and the Owner's own channel.
+      /** @type {Array<{ id: string, name: string }>} */
+      let channels = [];
+      if (guild) {
+        try {
+          channels = /** @type {any[]} */ (await d.call('GET', `/guilds/${guild.id}/channels`))
+            .filter(c => c.type === 0 || c.type === 5)
+            .sort((x, y) => (x.position ?? 0) - (y.position ?? 0))
+            .map(c => ({ id: String(c.id), name: String(c.name) }));
+        } catch (e) {
+          return json(res, 502, { error: e.message });
+        }
+      }
+      if (sub === '/discord/test')
+        return json(res, 200, {
+          bot: bot.username,
+          guilds: guilds.map(g => ({ id: g.id, name: g.name })),
+          channels,
+          announceChannel: all.discord?.announceChannel ?? '',
+          ownerChannel: all.discord?.ownerChannel ?? '',
+        });
       if (!guild) return json(res, 400, { error: 'pick a server the bot is in' });
-      apps.setDiscord({ token, guildId: guild.id, guildName: guild.name, botName: bot.username });
+      /** @param {unknown} v */
+      const channel = v => (v ? (channels.find(c => c.id === String(v))?.id ?? null) : '');
+      const announceChannel = channel(body.announceChannel);
+      const ownerChannel = channel(body.ownerChannel);
+      if (announceChannel === null || ownerChannel === null)
+        return json(res, 400, { error: 'pick channels in that server' });
+      const had = all.discord?.announceChannel || all.discord?.ownerChannel;
+      apps.setDiscord({
+        token,
+        guildId: guild.id,
+        guildName: guild.name,
+        botName: bot.username,
+        announceChannel,
+        ownerChannel,
+        // Only what happens from now on is announced; setting channels for the first time doesn't post the past.
+        noticesFrom: had && all.discord?.noticesFrom ? all.discord.noticesFrom : now(),
+      });
       appsChanged();
       log(`settings: Discord saved (${bot.username} in ${guild.name})`);
       return json(res, 200, { saved: true });
@@ -408,6 +446,13 @@ function createApp({
       if (m !== 'GET' && !String(req.headers['content-type']).startsWith('application/json'))
         return json(res, 415, { error: 'send JSON' });
       return setupRoute(req, res, m, p);
+    }
+    // A poster for a Discord announcement: Discord fetches it without signing in, so only by a signed link.
+    const cover = p.match(/^\/cover\/([^/]+)\/([\w-]{22})$/);
+    if (m === 'GET' && cover) {
+      const key = decodeURIComponent(cover[1]);
+      if (!posterOk(store, key, cover[2])) return json(res, 404, { error: 'not found' });
+      return sendPoster(res, key);
     }
     if (m === 'GET' && p === '/auth/plex') return signInStart(req, res);
     if (m === 'GET' && p === '/auth/plex/callback') return signInCallback(req, res);

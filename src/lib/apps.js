@@ -13,7 +13,11 @@ const { seerr } = require('./seerr');
 /** @typedef {import('./http').Fetch} Fetch */
 /** @typedef {{ url: string, apiKey: string }} AppConfig */
 /** @typedef {{ url: string, token: string, machineId: string, name: string }} PlexConfig */
-/** @typedef {{ token: string, guildId: string, guildName: string, botName: string }} DiscordConfig */
+/**
+ * @typedef {{ token: string, guildId: string, guildName: string, botName: string, announceChannel?: string,
+ *   ownerChannel?: string, noticesFrom?: number }} DiscordConfig
+ *   noticesFrom: when channels were first set; nothing that happened before is announced
+ */
 
 // The apps on the Settings page, in order. Plex is set up separately, by signing in.
 const APPS = /** @type {const} */ ({

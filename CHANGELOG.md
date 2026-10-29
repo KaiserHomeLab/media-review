@@ -8,6 +8,13 @@ number, a fix the last one.
 
 ### Added
 
+- Discord announcements and messages to you. Pick two channels under Settings → Discord.
+  **Announcements** gets a card with the poster when something is Leaving Soon, plus its last day,
+  when it's staying after all or coming back, and when a reported problem is fixed. It never names
+  anyone. **Your channel** gets new Review Queue entries (with who Downvoted), send-backs, Problem
+  Reports, asks to bring back, deletions that failed, and apps unreachable for an hour. Friends get a
+  DM when their Problem Report is resolved or closed. Each event is sent exactly once, and nothing
+  waits on Discord being up.
 - Discord bot (optional): friends use `/downvote`, `/withdraw`, `/object`, `/report` and `/mine` in
   your Discord server, with title autocomplete and replies only they can see. The first time, the
   bot gives them a one-time link to connect their Discord to their Plex account. Set it up under

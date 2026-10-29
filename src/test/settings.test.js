@@ -38,6 +38,12 @@ const fakeFetch = async (url, init = {}) => {
     if (/** @type {any} */ (init.headers)?.Authorization !== 'Bot good-token') return new Response('', { status: 401 });
     if (u.pathname === '/api/v10/users/@me') return Response.json({ id: 'b1', username: 'Media Review' });
     if (u.pathname === '/api/v10/users/@me/guilds') return Response.json([{ id: 'g1', name: 'Home Lab' }]);
+    if (u.pathname === '/api/v10/guilds/g1/channels')
+      return Response.json([
+        { id: 'c2', name: 'owner-only', type: 0, position: 2 },
+        { id: 'v1', name: 'Voice', type: 2, position: 0 },
+        { id: 'c1', name: 'announcements', type: 5, position: 1 },
+      ]);
   }
   if (u.pathname !== '/identity') return new Response('', { status: 404 });
   if (u.hostname === 'plex') return new Response(JSON.stringify({ MediaContainer: { machineIdentifier: 'tower-id' } }));
@@ -407,7 +413,24 @@ test("Discord in Settings: Test lists the bot's servers, Save needs one of them,
   const ok = await s.body(
     await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: 'good-token' } }),
   );
-  assert.deepEqual(ok, [200, { bot: 'Media Review', guilds: [{ id: 'g1', name: 'Home Lab' }] }]);
+  assert.deepEqual(ok, [
+    200,
+    {
+      bot: 'Media Review',
+      guilds: [{ id: 'g1', name: 'Home Lab' }],
+      channels: [],
+      announceChannel: '',
+      ownerChannel: '',
+    },
+  ]);
+  // With the server picked: its text channels, in Discord's order, not voice ones.
+  const inGuild = await s.body(
+    await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: 'good-token', guildId: 'g1' } }),
+  );
+  assert.deepEqual(inGuild[1].channels, [
+    { id: 'c1', name: 'announcements' },
+    { id: 'c2', name: 'owner-only' },
+  ]);
   const wrong = await s.req('/api/owner/settings/discord', {
     method: 'PUT',
     body: { token: 'good-token', guildId: 'g9' },
@@ -423,7 +446,20 @@ test("Discord in Settings: Test lists the bot's servers, Save needs one of them,
     guildId: 'g1',
     guildName: 'Home Lab',
     botName: 'Media Review',
+    announceChannel: '',
+    ownerChannel: '',
+    noticesFrom: NOW,
   });
+  const notThere = await s.req('/api/owner/settings/discord', {
+    method: 'PUT',
+    body: { token: '', guildId: 'g1', announceChannel: 'v1' },
+  });
+  assert.equal(notThere.status, 400, 'a voice channel, or one in another server, is refused');
+  await s.req('/api/owner/settings/discord', {
+    method: 'PUT',
+    body: { token: '', guildId: 'g1', announceChannel: 'c1', ownerChannel: 'c2' },
+  });
+  assert.deepEqual([s.apps.read().discord?.announceChannel, s.apps.read().discord?.ownerChannel], ['c1', 'c2']);
   const page = await (await s.req('/api/owner/settings')).text();
   assert.doesNotMatch(page, /good-token/);
   assert.match(page, /"guildName":"Home Lab"/);

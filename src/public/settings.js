@@ -84,9 +84,11 @@ function renderApps() {
   for (const a of added) tiles.push(tile(a.id, a.label, a.needed.split('.')[0], a.url));
   if (S.discord) {
     const st = S.discord.status;
-    appStatus.discord = st?.connected
-      ? { up: true, text: 'Connected' }
-      : { up: false, text: st?.error ?? 'Connecting…' };
+    appStatus.discord = !st?.connected
+      ? { up: false, text: st?.error ?? 'Connecting…' }
+      : st.postError
+        ? { up: false, text: `Couldn't post: ${st.postError}` }
+        : { up: true, text: 'Connected' };
     tiles.push(tile('discord', 'Discord', `Bot in ${S.discord.guildName}`, `@${S.discord.botName}`));
   } else delete appStatus.discord;
   if (added.length < S.apps.length || !S.discord) {
@@ -224,13 +226,43 @@ function discordForm(editing) {
   const guild = /** @type {HTMLSelectElement} */ (el('select', ''));
   const guildField = field('Server', guild, 'Commands work in this server only.');
   guildField.hidden = true;
+  // Where the bot posts: announcements everyone sees, and messages only for you. Either can be left off.
+  const announce = /** @type {HTMLSelectElement} */ (el('select', ''));
+  const owner = /** @type {HTMLSelectElement} */ (el('select', ''));
+  const channelFields = el('div', 'parts');
+  channelFields.append(
+    field(
+      'Announcements',
+      announce,
+      'Leaving Soon, last day, staying, brought back, fixed problems. Never names anyone.',
+    ),
+    field('Your channel', owner, 'Review Queue, send-backs, reports, asks, failures. Make it one only you can see.'),
+  );
+  channelFields.hidden = true;
+  const loadChannels = async () => {
+    const r = await api('/api/owner/settings/discord/test', 'POST', { token: token.value, guildId: guild.value });
+    for (const [select, current] of [
+      [announce, r.announceChannel],
+      [owner, r.ownerChannel],
+    ]) {
+      select.replaceChildren(
+        Object.assign(document.createElement('option'), { value: '', textContent: '— off —' }),
+        ...r.channels.map(c =>
+          Object.assign(document.createElement('option'), { value: c.id, textContent: `#${c.name}` }),
+        ),
+      );
+      select.value = guild.value === S.discord?.guildId ? current : '';
+    }
+    channelFields.hidden = false;
+  };
+  guild.addEventListener('change', () => loadChannels().catch(e => say(result, e.message, false)));
   const result = el('span', 'result');
   const steps = el('ol', 'steps');
   for (const s of [
     'Open discord.com/developers/applications and press New Application. Name it, e.g. Media Review.',
     'Bot → Reset Token, and copy the token. No privileged intents are needed.',
-    'OAuth2 → URL Generator: tick bot and applications.commands, open the link it makes, and add the bot to your server.',
-    'Paste the token here, press Test, pick the server, and Save.',
+    'OAuth2 → URL Generator: tick bot and applications.commands, and under Bot Permissions tick Send Messages and Embed Links. Open the link it makes and add the bot to your server.',
+    'Paste the token here, press Test, pick the server and the two channels, and Save.',
   ])
     steps.append(el('li', '', s));
   const button = (label, cls, fn) => {
@@ -255,8 +287,9 @@ function discordForm(editing) {
     guild.replaceChildren(
       ...guilds.map(g => Object.assign(document.createElement('option'), { value: g.id, textContent: g.name })),
     );
-    if (S.discord?.guildId) guild.value = S.discord.guildId;
+    if (S.discord?.guildId && guilds.some(g => g.id === S.discord.guildId)) guild.value = S.discord.guildId;
     guildField.hidden = false;
+    await loadChannels();
     say(result, `Works: ${bot}`, true);
   };
   const actions = el('div', 'actions');
@@ -275,7 +308,12 @@ function discordForm(editing) {
     button('Save', 'btn primary', async () => {
       if (guildField.hidden) await test();
       if (guildField.hidden) return;
-      await api('/api/owner/settings/discord', 'PUT', { token: token.value, guildId: guild.value });
+      await api('/api/owner/settings/discord', 'PUT', {
+        token: token.value,
+        guildId: guild.value,
+        announceChannel: announce.value,
+        ownerChannel: owner.value,
+      });
       modal.close();
       await load();
       // It takes a moment to connect: look again shortly.
@@ -292,6 +330,7 @@ function discordForm(editing) {
     ...(editing ? [] : [steps]),
     field('Bot token', token, editing ? `@${S.discord.botName} in ${S.discord.guildName}` : undefined),
     guildField,
+    channelFields,
     actions,
   );
   openModal(editing ? 'Discord' : 'Add Discord', [form]);

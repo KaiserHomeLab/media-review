@@ -1,5 +1,7 @@
 # 0010: Discord announcements and Owner messages
 
+**Status:** Done.
+
 **Blocked by:** 0009, 0004, 0006, 0007
 
 ## What to build
@@ -11,6 +13,13 @@
 
 ## Acceptance criteria
 
-- [ ] Each event above sends exactly one message, also when a sync or job runs again.
-- [ ] Announcements never name who Downvoted or objected.
-- [ ] Discord being down doesn't block the decision or rule that triggered the message.
+- [x] Each event above sends exactly one message, also when a sync or job runs again.
+- [x] Announcements never name who Downvoted or objected.
+- [x] Discord being down doesn't block the decision or rule that triggered the message.
+
+## Decided with the Owner
+
+- The Owner's messages go to a private channel picked in Settings. They're not DMs.
+- The Owner also hears about new Problem Reports, asks to bring back, failed deletions, and apps unreachable for an hour.
+- The announcement channel also gets the last-day reminder, sent back or kept after all, and brought back.
+- Announcements are embeds with the poster.

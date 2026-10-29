@@ -41,6 +41,14 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
   - **Setup:** Settings → + Add app → Discord. Paste the bot token, press Test to list the servers the bot is in, pick one and Save. The token is never sent back to the browser.
 - Announcements to the server channel: a Title entering Leaving Soon, and a resolved Problem Report (the reporter is told directly too).
 - Messages to the Owner: a Title entering the Review Queue, and an Objection sending a Title back to the Owner.
+- **Confirmed by the Owner (0010):**
+  - **The Owner's messages** go to a private channel the Owner picks in Settings, not as DMs. Besides the two above, they cover: a new Problem Report (one per report, not per "me too"), an ask to bring back, a deletion that failed (once per Leaving Soon), and an app unreachable for an hour, plus a message when it's back.
+  - **The announcement channel** gets: Leaving Soon, a last-day reminder the day before it's deleted, "not leaving for now" when Objections send it back, "staying after all" after Keep after all, "coming back" when brought back, and a resolved Problem Report. A closed one isn't announced.
+  - **Look:** each announcement is a Discord embed with the poster. Discord fetches the poster by a signed link (`/cover/:key/:sig`), so only announced posters can be fetched without signing in.
+  - **DMs:** each reporter with a linked Discord gets a DM when their report is resolved or closed, with the Owner's note.
+  - **How "exactly once" works:** Media Review records one notice per event, under a key naming the event, then sends what's unsent, oldest first, every minute and after each sync. Running it again records nothing new. If Discord is down the notices wait, and no decision waits on Discord. A DM that can't be delivered is given up after 3 tries.
+  - **Starting point:** only events from when the channels are first set are posted, so turning this on doesn't announce the past.
+  - **Privacy:** announcements never name who Downvoted or objected. The Owner's channel does.
 
 ### API for Media Ops
 
