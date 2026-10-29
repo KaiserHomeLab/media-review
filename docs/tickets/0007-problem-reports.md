@@ -2,6 +2,8 @@
 
 **Blocked by:** 0001
 
+**Status:** Done. Discord notices come with 0010.
+
 ## What to build
 
 Problem Reports built into Media Review, not Seerr Issues (ADR 0001).
@@ -14,6 +16,13 @@ Problem Reports built into Media Review, not Seerr Issues (ADR 0001).
 
 ## Acceptance criteria
 
-- [ ] A Problem Report never counts as a Downvote or affects the threshold.
-- [ ] Resolved and closed reports leave the open list, and the reporter sees which happened.
-- [ ] Voters see only their own Problem Reports.
+- [x] A Problem Report never counts as a Downvote or affects the threshold.
+- [x] Resolved and closed reports leave the open list, and the reporter sees which happened.
+- [x] Voters see only their own Problem Reports.
+
+## Decided with the Owner
+
+- A show's report can be on the whole show, a season, or one episode.
+- Reasons to pick from (Won't play, Video, Audio, Subtitles, Wrong title or language, Poor quality, Other), with an optional note. Other needs one.
+- Resolve and Close take an optional note the reporters see.
+- The same problem again joins the open report as a "me too"; everyone on it sees the outcome.

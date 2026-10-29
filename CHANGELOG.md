@@ -8,6 +8,10 @@ number, a fix the last one.
 
 ### Added
 
+- Problem Reports: a Voter reports a broken or poor copy of a movie, a whole show, a season or one
+  episode, picking what's wrong and adding a note. Someone with the same problem says "me too" on the
+  open one. The Owner resolves or closes it, with an optional note, on the Review Queue page or in
+  Media Ops, and the reporters see the outcome under "Your Problem Reports". Never a Downvote.
 - Sign in with Plex. Voters Downvote movies and shows, and withdraw a Downvote until the Title
   reaches the Review Queue. They're told when a Downvote won't count until they've tried the Title.
 - The weighting and threshold rules: Sample, Base Weight, Title Bonus, Audience and Minimum Audience.

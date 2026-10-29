@@ -28,6 +28,7 @@
   --on-accent: #1a1a19; /* text on an accent background */
   --good: #0ca30c;
   --critical: #d03b3b;
+  --info: #4a90e2; /* Problem Reports */
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -43,6 +44,7 @@
     --text-muted: #77766f;
     --accent: #8f6200;
     --on-accent: #fff;
+    --info: #1f62b8;
   }
 }
 
@@ -508,7 +510,8 @@ main.narrow {
   font-size: 12px;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   font: 14px var(--sans);
   color: var(--text-primary);
   background: var(--bg);
@@ -518,7 +521,8 @@ main.narrow {
   width: 100%;
 }
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   outline-offset: 0;
   border-color: var(--accent);
@@ -798,4 +802,117 @@ code {
   border-radius: 8px;
   word-break: break-all;
   margin: 0 0 14px;
+}
+
+/* ------------------------------------------------------------------ Problem Reports */
+.field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+.pick[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+}
+.reasons {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+.report-form {
+  display: grid;
+  gap: 14px;
+}
+.parts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 520px) {
+  .parts {
+    grid-template-columns: 1fr;
+  }
+}
+.open-reports {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.open-reports li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.open-reports .what {
+  flex: 1;
+  min-width: 160px;
+}
+.chip.good {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+}
+.note-in {
+  font: 13px var(--sans);
+  color: var(--text-primary);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  width: 100%;
+}
+
+/* ------------------------------------------------------------------ owner: one colour per section
+   Downvotes amber, Problem Reports blue, Leaving Soon red: on the card's top edge, its heading badge,
+   and a bar down the side of every entry, so a glance says which list you're in. */
+.kind-downvote {
+  --kind: var(--accent);
+}
+.kind-problem {
+  --kind: var(--info);
+}
+.kind-leaving {
+  --kind: var(--critical);
+}
+.card[class*='kind-'] {
+  border-top: 3px solid var(--kind);
+}
+.card[class*='kind-'] h2 {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+}
+.kind-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--kind);
+  background: color-mix(in srgb, var(--kind) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kind) 45%, transparent);
+}
+.card h2 .kind-sub {
+  flex-basis: 100%;
+  margin-left: 36px;
+  font: 400 12px var(--sans);
+  color: var(--text-muted);
+  letter-spacing: 0;
+  text-transform: none;
+}
+[class*='kind-'] .queue .entry:not(.empty) {
+  border-left: 3px solid var(--kind);
+  padding-left: 12px;
+  margin-left: -4px;
+}
+[class*='kind-'] .queue .entry:first-child {
+  padding-top: 12px;
+}
+[class*='kind-'] .chip.kind {
+  color: var(--kind);
+  border-color: color-mix(in srgb, var(--kind) 45%, var(--line));
 }

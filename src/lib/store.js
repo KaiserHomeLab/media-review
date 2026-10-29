@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY, plex_id TEXT NOT NULL, is_owner INTEGER NOT NULL, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS problem_reports (
+  id INTEGER PRIMARY KEY, title_key TEXT NOT NULL, season INTEGER, episode INTEGER, episode_title TEXT,
+  reason TEXT NOT NULL, created_at INTEGER NOT NULL,
+  outcome TEXT CHECK (outcome IN ('resolved', 'closed')), owner_note TEXT, decided_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS problem_reports_title ON problem_reports (title_key);
+CREATE TABLE IF NOT EXISTS problem_reporters (
+  report_id INTEGER NOT NULL, voter_id TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL,
+  PRIMARY KEY (report_id, voter_id)
+);
 `;
 
 /**
@@ -62,6 +72,9 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
  *   tmdb_id: string | null, tvdb_id: string | null }} TitleRow
  * @typedef {{ id: string, voter_id: string, title_key: string, started: number, seconds: number,
  *   watched: number }} PlayRow
+ * @typedef {{ id: number, title_key: string, season: number | null, episode: number | null,
+ *   episode_title: string | null, reason: string, created_at: number, outcome: 'resolved' | 'closed' | null,
+ *   owner_note: string | null, decided_at: number | null }} ProblemRow
  */
 
 /** @param {string} file ':memory:' in tests */
@@ -410,6 +423,98 @@ function openStore(file) {
       /** @type {any} */ (
         db.prepare('SELECT decision, at FROM decisions WHERE title_key = ? ORDER BY at').all(titleKey)
       ),
+
+    // Problem Reports: one report per problem, with everyone who has it (the first reporter and each "me too").
+    /** @param {number} id @returns {ProblemRow | undefined} */
+    problem: id => /** @type {any} */ (db.prepare('SELECT * FROM problem_reports WHERE id = ?').get(id)),
+    // The open report on this same part of a Title for this same reason, which a new one joins.
+    /** @param {string} titleKey @param {number | null} season @param {number | null} episode @param {string} reason */
+    sameProblem: (titleKey, season, episode, reason) =>
+      /** @type {ProblemRow | undefined} */ (
+        db
+          .prepare(
+            `SELECT * FROM problem_reports WHERE outcome IS NULL AND title_key = ? AND season IS ? AND episode IS ?
+             AND reason = ?`,
+          )
+          .get(titleKey, season, episode, reason)
+      ),
+    /**
+     * @param {{ titleKey: string, season: number | null, episode: number | null, episodeTitle: string | null,
+     *   reason: string }} p @param {number} now @returns {number} its id
+     */
+    addProblem: (p, now) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO problem_reports (title_key, season, episode, episode_title, reason, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .run(p.titleKey, p.season, p.episode, p.episodeTitle, p.reason, now).lastInsertRowid,
+      ),
+    /** @param {number} id @param {string} voterId @param {string | null} note @param {number} now @returns {boolean} false if on it already */
+    addReporter: (id, voterId, note, now) =>
+      db
+        .prepare(
+          'INSERT INTO problem_reporters (report_id, voter_id, note, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+        )
+        .run(id, voterId, note, now).changes === 1,
+    // Taken back: a report nobody has any more goes too.
+    /** @param {number} id @param {string} voterId @returns {boolean} false if they weren't on it */
+    removeReporter: (id, voterId) => {
+      let removed = false;
+      tx(() => {
+        removed =
+          db.prepare('DELETE FROM problem_reporters WHERE report_id = ? AND voter_id = ?').run(id, voterId).changes ===
+          1;
+        if (!db.prepare('SELECT 1 FROM problem_reporters WHERE report_id = ?').get(id))
+          db.prepare('DELETE FROM problem_reports WHERE id = ?').run(id);
+      });
+      return removed;
+    },
+    /** @param {number} id @returns {Array<{ voter_id: string, username: string | null, note: string | null, created_at: number }>} first first */
+    reportersOf: id =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT r.voter_id, v.username, r.note, r.created_at FROM problem_reporters r
+             LEFT JOIN voters v ON v.plex_id = r.voter_id WHERE r.report_id = ? ORDER BY r.created_at, r.voter_id`,
+          )
+          .all(id)
+      ),
+    /** @returns {ProblemRow[]} oldest first */
+    openProblems: () =>
+      /** @type {any} */ (
+        db.prepare('SELECT * FROM problem_reports WHERE outcome IS NULL ORDER BY created_at, id').all()
+      ),
+    /** @param {string} titleKey @returns {ProblemRow[]} */
+    openProblemsOf: titleKey =>
+      /** @type {any} */ (
+        db
+          .prepare('SELECT * FROM problem_reports WHERE outcome IS NULL AND title_key = ? ORDER BY created_at, id')
+          .all(titleKey)
+      ),
+    // One Voter's reports: every open one, and each decided since `since`. Newest first.
+    /** @param {string} voterId @param {number} since @returns {Array<ProblemRow & { note: string | null }>} */
+    problemsBy: (voterId, since) =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT p.*, r.note FROM problem_reports p JOIN problem_reporters r ON r.report_id = p.id
+             WHERE r.voter_id = ? AND (p.outcome IS NULL OR p.decided_at >= ?)
+             ORDER BY COALESCE(p.decided_at, r.created_at) DESC, p.id DESC`,
+          )
+          .all(voterId, since)
+      ),
+    /**
+     * @param {number} id @param {'resolved' | 'closed'} outcome @param {string | null} note @param {number} now
+     * @returns {boolean} false if it isn't open
+     */
+    decideProblem: (id, outcome, note, now) =>
+      db
+        .prepare(
+          'UPDATE problem_reports SET outcome = ?, owner_note = ?, decided_at = ? WHERE id = ? AND outcome IS NULL',
+        )
+        .run(outcome, note, now, id).changes === 1,
 
     /** @param {string} token @param {string} plexId @param {boolean} isOwner @param {number} now */
     addSession: (token, plexId, isOwner, now) =>

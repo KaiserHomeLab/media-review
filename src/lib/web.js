@@ -20,6 +20,7 @@ const {
   reviewQueue,
   evaluateAll,
 } = require('./review');
+const problems = require('./problems');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -369,7 +370,9 @@ function createApp({
     if (p.startsWith('/api/v1/')) {
       if (!apiKeyOk(req)) return json(res, 401, { error: 'invalid API key' });
       if (m === 'GET' && p === '/api/v1/status') return json(res, 200, { app: 'media-review', version: VERSION });
-      const handled = decisions(res, m, p.slice('/api/v1'.length), 'Media Ops');
+      const handled =
+        decisions(res, m, p.slice('/api/v1'.length), 'Media Ops') ??
+        problemDecisions(req, res, m, p.slice('/api/v1'.length), 'Media Ops');
       if (handled) return handled;
       const poster = p.match(/^\/api\/v1\/poster\/([^/]+)$/);
       if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
@@ -492,10 +495,15 @@ function createApp({
     const poster = p.match(/^\/poster\/([^/]+)$/);
     if (m === 'GET' && poster) return sendPoster(res, decodeURIComponent(poster[1]));
 
+    const reported = await problemRoute(req, res, m, p, s);
+    if (reported !== null) return reported;
+
     // Owner only: the Review Queue and its decisions, the same ones Media Ops can make (ADR 0003).
     if (p.startsWith('/api/owner/') && !s.isOwner) return json(res, 403, { error: 'Owner only' });
     if (p.startsWith('/api/owner/')) {
-      const handled = decisions(res, m, p.slice('/api/owner'.length), 'Media Review');
+      const handled =
+        decisions(res, m, p.slice('/api/owner'.length), 'Media Review') ??
+        problemDecisions(req, res, m, p.slice('/api/owner'.length), 'Media Review');
       if (handled) return handled;
       if (p === '/api/owner/rules') return rulesRoute(req, res, m);
       if (p === '/api/owner/settings' || p.startsWith('/api/owner/settings/'))
@@ -544,6 +552,68 @@ function createApp({
     log(`Remove (${via}): ${name}, Leaving Soon until ${new Date(r.endsAt * 1000).toISOString().slice(0, 10)}`);
     leavingChanged();
     return json(res, 200, { removed: true, endsAt: new Date(r.endsAt * 1000).toISOString() });
+  }
+
+  // ------------------------------------------------------------------ Problem Reports
+  // A Voter's side: their own reports, a show's seasons and episodes to pick from, the open reports on a
+  // Title (to say "me too"), filing one, and taking theirs back. The Owner fixes things and files none.
+  /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} p @param {Session} s */
+  async function problemRoute(req, res, m, p, s) {
+    if (m === 'GET' && p === '/api/problems')
+      return json(res, 200, { problemReports: problems.reportsBy(store, s.plexId, now()) });
+    const t = p.match(/^\/api\/titles\/([^/]+)\/(episodes|problems)$/);
+    const mine = p.match(/^\/api\/problems\/(\d{1,12})\/(me-too|withdraw)$/);
+    if (!(t && (m === 'GET' || (m === 'POST' && t[2] === 'problems'))) && !(mine && m === 'POST')) return null;
+    if (m === 'POST' && s.isOwner)
+      return json(res, 403, { error: 'The Owner fixes problems directly and does not file Problem Reports.' });
+    if (mine) {
+      const id = Number(mine[1]);
+      const r =
+        mine[2] === 'me-too'
+          ? problems.meToo(store, s.plexId, id, (await readJson(req)).note, now())
+          : problems.withdrawReport(store, s.plexId, id);
+      return r.ok ? json(res, 200, { ok: true }) : json(res, 409, { error: r.error });
+    }
+    const key = decodeURIComponent(/** @type {RegExpMatchArray} */ (t)[1]);
+    const title = store.title(key);
+    if (!title) return json(res, 404, { error: 'unknown-title' });
+    if (t?.[2] === 'episodes') {
+      if (title.kind !== 'show') return json(res, 200, { seasons: [] });
+      /** @type {Map<number, Array<{ episode: number, title: string }>>} */
+      const seasons = new Map();
+      for (const e of await plex.episodes(key)) {
+        const list = seasons.get(e.season) ?? [];
+        list.push({ episode: e.episode, title: e.title });
+        seasons.set(e.season, list);
+      }
+      return json(res, 200, { seasons: [...seasons].map(([season, episodes]) => ({ season, episodes })) });
+    }
+    if (m === 'GET') return json(res, 200, { problemReports: problems.openOn(store, s.plexId, key) });
+    const body = await readJson(req);
+    const r = await problems.report(store, s.plexId, { ...body, titleKey: key }, now(), k => plex.episodes(k));
+    if (!r.ok) return json(res, r.error === 'unknown-title' ? 404 : r.error === 'already-reported' ? 409 : 400, r);
+    log(`Problem Report${r.joined ? ' (me too)' : ''}: ${title.title}`);
+    return json(res, 201, { id: r.id, joined: r.joined });
+  }
+
+  // The Owner's side, under /api/v1 (Media Ops) and /api/owner, like the decisions above:
+  //   GET  /problem-reports              POST /problem-reports/:id/resolve    POST /problem-reports/:id/close
+  // Both take an optional { note } the reporters see. null when the path isn't one of these.
+  /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} sub @param {string} via */
+  function problemDecisions(req, res, m, sub, via) {
+    if (m === 'GET' && sub === '/problem-reports')
+      return json(res, 200, { problemReports: problems.openReports(store) });
+    const d = sub.match(/^\/problem-reports\/(\d{1,12})\/(resolve|close)$/);
+    if (m !== 'POST' || !d) return null;
+    return (async () => {
+      const id = Number(d[1]);
+      const p = store.problem(id);
+      const outcome = d[2] === 'resolve' ? 'resolved' : 'closed';
+      const r = problems.decide(store, id, outcome, (await readJson(req)).note, now());
+      if (!r.ok) return json(res, 409, { error: r.error });
+      log(`Problem Report ${outcome} (${via}): ${store.title(String(p?.title_key))?.title ?? p?.title_key}`);
+      return json(res, 200, { [outcome]: true });
+    })();
   }
 
   // A Title's poster, resized by Plex, so neither the browser nor Media Ops needs a Plex token.

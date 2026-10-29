@@ -138,6 +138,18 @@ function plex(cfg) {
       return out;
     },
 
+    // A show's episodes, for a Problem Report on one season or episode. Season 0 is Specials.
+    /** @param {string} showKey @returns {Promise<Array<{ season: number, episode: number, title: string }>>} */
+    async episodes(showKey) {
+      const items = /** @type {any[]} */ (
+        (await server(`/library/metadata/${encodeURIComponent(showKey)}/allLeaves`)).MediaContainer.Metadata ?? []
+      );
+      return items
+        .filter(e => Number.isInteger(e.parentIndex) && Number.isInteger(e.index))
+        .map(e => ({ season: e.parentIndex, episode: e.index, title: String(e.title ?? '') }))
+        .sort((a, b) => a.season - b.season || a.episode - b.episode);
+    },
+
     // ---------------------------------------------------------------- collections (Leaving Soon)
     // The same calls Plex Web makes. A pinned collection is a "managed hub" of its library, identified as
     // custom.collection.<section>.<collection>.

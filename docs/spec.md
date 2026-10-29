@@ -131,6 +131,13 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 - A Voter reports that a specific copy of a Title is broken or poor quality and asks for it to be replaced. A Problem Report never counts as a Downvote (ADR 0001).
 - It waits for the Owner, who resolves or closes it in Media Review, or in Media Ops if connected.
 - The reporter is told when it is resolved or closed: in the web app, and on Discord if linked. A resolved one is also announced.
+- **Confirmed by the Owner (0007):**
+  - For a show, a report is on the whole show, one season, or one episode, picked from the show's episodes in Plex.
+  - The Voter picks a reason: Won't play, Video, Audio, Subtitles, Wrong title or language, Poor quality, or Other. A note is optional, except for Other.
+  - The Owner can add an optional note when resolving or closing it, and the reporters see it with the outcome.
+  - A second Voter with the same problem (same Title, part and reason) joins the open report ("me too"), with an optional note of their own. Before filing, a Voter sees the open reports on the Title, without names, and can say "me too" to one.
+  - A Voter can withdraw from a report while it is open. A report nobody is on any more is gone.
+  - Voters see their own open reports and, for 30 days, the outcome of their decided ones.
 
 ## Settings
 

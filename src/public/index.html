@@ -44,6 +44,11 @@
       </p>
       <p class="notice error" id="error" hidden></p>
 
+      <section class="card kind-problem" id="reports-card" hidden>
+        <h2><span class="kind-badge" aria-hidden="true">⚑</span>Your Problem Reports <span class="count" id="reports-count"></span></h2>
+        <ul class="queue" id="reports"></ul>
+      </section>
+
       <section class="card" id="app" hidden>
         <h2>Library <span class="count" id="count"></span></h2>
         <div class="seg" id="tabs" role="tablist" aria-label="Libraries" hidden></div>
@@ -52,5 +57,13 @@
         <p class="empty" id="empty" hidden>No titles match.</p>
       </section>
     </main>
+
+    <dialog id="modal" class="modal" aria-labelledby="modal-title">
+      <div class="modal-head">
+        <h2 id="modal-title">Report a problem</h2>
+        <button class="icon-btn" type="button" id="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </dialog>
   </body>
 </html>

@@ -56,6 +56,8 @@ Every request sends the key as `X-Api-Key`.
 - `POST /api/v1/review-queue/:ratingKey/keep` and `…/remove`: the Owner's decision. Remove answers `{ removed: true, endsAt }`
 - `GET /api/v1/leaving-soon`: `{ leavingSoon: [...] }`, each with `endsAt` and `daysLeft`
 - `POST /api/v1/leaving-soon/:ratingKey/keep`: Keep after all
+- `GET /api/v1/problem-reports`: `{ problemReports: [...] }`, the open Problem Reports, oldest first, each with its Title, the part (`"S2 E3 · Title"`, `"Season 2"`, or `null` for the whole Title), the reason, and every reporter with their note
+- `POST /api/v1/problem-reports/:id/resolve` and `…/close`: the Owner's decision, with an optional `{ "note": "…" }` the reporters see
 - `GET /api/v1/poster/:ratingKey`: the Title's poster
 
 The Owner's own pages use the same routes under `/api/owner/` with their session instead of the key.
