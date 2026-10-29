@@ -1,103 +1,233 @@
 # Media Review
 
-Friends who use a Plex server Downvote movies and shows they think should leave the library. When enough of the people who've actually tried a Title agree, it goes to the Review Queue, and the Owner decides Keep or Remove on Media Review's own Review Queue page. Nothing is ever removed automatically.
+**Let the people you share Plex with tell you what's no longer worth keeping.**
 
-It works on its own. If you also run [Media Ops](https://github.com/KaiserHomeLab/media-ops), you can connect the two and decide from either.
+Media Review is a companion app for a Plex server you share with friends and family. They Downvote
+the movies and shows they think should go. When enough of the people who've actually tried a title
+agree, it lands in your Review Queue, and you decide Keep or Remove. Nothing is ever removed
+automatically. A title you Remove first spends two weeks in a pinned **Leaving Soon** collection in
+Plex, so everyone gets a last chance to watch it, and only then is it deleted.
 
-- What the words mean: [CONTEXT.md](CONTEXT.md)
-- What it does: [docs/spec.md](docs/spec.md)
-- What's being built: [docs/tickets/](docs/tickets/README.md)
-- Why it's built this way: [docs/adr/](docs/adr/)
+It runs as a single Docker container next to Plex. You set it up from a settings page in your
+browser; there are no files to edit. It works on its own, and connects to
+[Media Ops](https://github.com/KaiserHomeLab/media-ops) if you use that too.
 
-## Installing on Unraid
+![What friends see: their reports, their asks, and the library](docs/screenshots/library.png)
 
-Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, next to Plex and Tautulli. Everything else is set up in its web app.
+<sub>Screenshots use made-up people and titles.</sub>
 
-1. Save [`unraid-template.xml`](unraid-template.xml) (it carries the icon Unraid shows) as `/boot/config/plugins/dockerMan/templates-user/my-media-review.xml`, then go to **Docker → Add Container → Template: media-review**.
-2. Set **Network Type** to the custom network Plex, Tautulli, Radarr and Sonarr are on, so Media Review can reach them by container name (`http://plex:32400`, `http://tautulli:8181`…).
-3. Keep **Appdata** on the cache pool. SQLite is unreliable through `/mnt/user`'s FUSE layer unless appdata is an exclusive share, so use `/mnt/cache/appdata/media-review` if it isn't.
-4. Apply, and open the container's log (**Docker → media-review → Logs**). It shows a one-time **setup code**; a new one is made at each start until setup is done.
-5. Open the web UI and do **first setup**:
-   1. Enter the setup code.
-   2. Sign in with the Plex account that owns your server. You become Media Review's Owner.
-   3. Pick the server, and the address Media Review uses to reach it, e.g. `http://plex:32400`.
-6. On **Settings** (⚙ in the top bar), add **Tautulli**, which is needed for play history. Add **Radarr**, **Sonarr** and **Sonarr (anime)** if you want what you Remove to be deleted, and **Seerr** if you want deleted titles held back from being requested again. Each has **Test** and **Save**. Saved API keys are never shown again, and leaving the key blank keeps the saved one.
+## How it decides
 
-**Reaching it from outside, with a Cloudflare Tunnel:** add a public hostname, for example `review.example.com`, with the service `http://media-review:8485`. The cloudflared container must be on the same custom network. Then put `https://review.example.com` in **Settings → Public address**, so Plex sign-in comes back there and sign-in cookies stay on https. Do first setup before you open the tunnel, or keep the setup code private; it's what stops anyone else from claiming the install.
+Not every Downvote is equal, and nobody can vote a title off the server without trying it first.
 
-**Media Ops (optional):** on Settings, generate a key under **Media Ops**. Then add Media Review in Media Ops under Settings → Add app, with `http://media-review:8485` and that key.
+- **Only people who tried it count.** A Downvote counts once that friend has watched a real part of
+  the title: 30 minutes of a movie, 10 minutes of a show. Until then they're told it doesn't count
+  yet.
+- **People who watch a lot weigh more.** Each friend's say grows with how much they've watched in
+  the last 90 days, plus a bonus on titles they've tried.
+- **A title goes to you** once at least 3 people have tried it and half of their combined weight
+  has Downvoted it.
+- **Watching it all takes the Downvote back.** If someone finishes a title they Downvoted, it no
+  longer counts.
 
-Logs are capped at 3 × 10 MB, the health check uses `/healthz`, and the container runs as PUID/PGID (99:100 by default, like other Unraid apps). Deletions run overnight, 04:00–07:00, in the container's time zone (`TZ`, which Unraid sets).
+Every number is yours to change under **Settings → Rules**.
 
-## Discord (optional)
+## What your friends can do
 
-Friends can Downvote, withdraw, object and report from Discord with slash commands. Every reply is private to them.
+**Sign in with Plex** and browse your libraries (Movies, TV Shows, Anime, as you named them in
+Plex). Downvote a title, or take a Downvote back. Friends only ever see their own Downvotes.
 
-1. Go to <https://discord.com/developers/applications>, press **New Application** and name it (for example Media Review).
-2. Under **Bot**, press **Reset Token** and copy the token. No privileged intents are needed.
-3. Under **OAuth2 → URL Generator**, tick `bot` and `applications.commands`, and under Bot Permissions tick **Send Messages** and **Embed Links**. Then open the link it makes and add the bot to your server.
-4. In Media Review, go to **Settings → + Add app → Discord**. Paste the token, press **Test**, pick your server, then pick the two channels, and **Save**:
-   - **Announcements**, which everyone sees: Leaving Soon (a card with the poster), the last-day reminder, staying after all or sent back, brought back, and fixed problems. These never name anyone.
-   - **Your channel**, which only you should be able to see: Titles entering the Review Queue (with who Downvoted), send-backs, new Problem Reports, asks to bring back, deletions that failed, and apps unreachable for an hour.
+**Report a problem** with a copy: the whole movie, a show, one season or one episode, with what's
+wrong and a note. If someone already reported the same thing, they add themselves to it ("me
+too"). A Problem Report never counts as a Downvote.
 
-   A friend whose Problem Report is resolved or closed is told in a direct message, if their Discord is linked. Only what happens after you set the channels is posted. Posters in announcements use the public address.
+![Reporting a problem with one episode](docs/screenshots/report.png)
 
-The bot connects out to Discord, so commands work without a tunnel. The one-time link a friend gets to connect their account uses the **public address** set in Settings.
+**Object** when something they want is Leaving Soon. Enough Objections send it back to you to look
+at again, once.
 
-Commands: `/downvote`, `/withdraw`, `/object`, `/report`, `/mine`, `/link`, `/unlink`.
+**Ask for it back** when a deleted title is missed. Deleted titles are blocked in Seerr, so they
+can't simply be requested and downloaded again; friends ask you instead.
 
-## Running it without Docker
+**Use Discord**, if you add the bot: `/downvote`, `/report`, `/object` and `/mine`, with title
+autocomplete and replies only they can see.
 
-Node.js 24 or newer, no npm dependencies.
+Their own reports and asks keep themselves up to date, with a notice when you've answered one.
 
-```sh
-cd src
-npm start
+<img src="docs/screenshots/phone.png" alt="Media Review on a phone" width="300">
+
+## What you get
+
+**A Review Queue** of titles that reached the bar: who Downvoted each one and how much each vote
+weighed, who has watched it since, and whether you've Kept it before. **Keep** clears its
+Downvotes. **Remove** sends it to Leaving Soon.
+
+![The Review Queue](docs/screenshots/review-queue.png)
+
+**Building up**: everything with Downvotes that hasn't reached the bar yet, closest first, so
+nothing creeps up on you. You can Keep or Remove early.
+
+![Building up](docs/screenshots/building-up.png)
+
+**Problem Reports**, with everyone who has the problem and their notes. Fix the copy, then
+**Resolve** it (or **Close** it if you won't), with a note they'll see.
+
+![Problem Reports](docs/screenshots/problem-reports.png)
+
+**Leaving Soon**, with the date each title goes, any Objections so far, and **Keep after all**.
+Deletion happens overnight through Radarr and Sonarr (a separate anime Sonarr too), with an
+import-list exclusion so lists don't bring it straight back. If something can't be deleted, you're
+told why, and it's tried again the next night.
+
+![Leaving Soon](docs/screenshots/leaving-soon.png)
+
+**Held back**: deleted titles friends have asked for, with why each one went. **Bring back** takes
+it off Seerr's blocklist and requests it. **Decline** keeps it held back.
+
+![Held back](docs/screenshots/held-back.png)
+
+**Discord, if you want it.** Announcements everyone sees (Leaving Soon with the poster, a last-day
+reminder, fixed problems), which never name who Downvoted. Plus a private channel for you: new
+Review Queue entries, Problem Reports, asks, failed deletions, and any app that's been unreachable
+for an hour.
+
+## Install
+
+**Unraid.** Save [`unraid-template.xml`](unraid-template.xml) to your flash drive as
+`/boot/config/plugins/dockerMan/templates-user/my-media-review.xml`, then go to **Docker → Add
+Container** and pick **media-review**. Before you click **Apply**:
+
+- Set **Network Type** to the custom network Plex, Tautulli, Radarr and Sonarr are on, so Media
+  Review can reach them by container name (`http://plex:32400`, `http://tautulli:8181`…).
+- Keep **Appdata** on the cache pool. SQLite is unreliable through `/mnt/user`'s FUSE layer unless
+  appdata is an exclusive share, so use `/mnt/cache/appdata/media-review` if it isn't.
+
+**Anywhere else with Docker**, on the same network as Plex:
+
+```bash
+docker run -d --name media-review --restart unless-stopped -p 8485:8485 \
+  --network YOUR-NETWORK \
+  -e PUID=$(id -u) -e PGID=$(id -g) -e TZ=America/Chicago \
+  -v ~/media-review:/config \
+  --log-opt max-size=10m --log-opt max-file=3 \
+  ghcr.io/kaiserhomelab/media-review:latest
 ```
 
-Then open `http://localhost:8485` and follow first setup, with the code printed in the terminal.
+## First steps
 
-| Variable | Default | Meaning |
+1. **Claim it.** Open the container's log (Unraid: **Docker → media-review → Logs**). It shows a
+   one-time **setup code**. Open the web UI (`http://<your-server>:8485`), enter the code, and sign
+   in with the Plex account that owns your server. You become its Owner. Do this before you make it
+   reachable from outside: the code is what stops anyone else from claiming it.
+2. **Pick your server** and the address Media Review uses to reach it, for example
+   `http://plex:32400`.
+3. **Add your apps** under **⚙ Settings → + Add app**, each with **Test** and **Save**. Tautulli is
+   needed, because it's where play history comes from. Add Radarr, Sonarr and Sonarr (anime) if
+   what you Remove should be deleted, and Seerr to hold deleted titles back. Saved API keys are
+   never shown again, and leaving the key blank keeps the saved one.
+4. **Mark your anime library** under **Settings → Rules**, if you have one.
+
+![Settings: the apps](docs/screenshots/settings.png)
+
+### Letting friends in, with a Cloudflare Tunnel
+
+Add a public hostname, for example `review.example.com`, with the service
+`http://media-review:8485`. The cloudflared container must be on the same network. Then put
+`https://review.example.com` in **Settings → Public address**, so Plex sign-in comes back there
+and stays on https. Friends sign in with their own Plex accounts; anyone your server isn't shared
+with is turned away.
+
+### Discord
+
+1. Go to <https://discord.com/developers/applications>, press **New Application** and name it.
+2. Under **Bot**, press **Reset Token** and copy the token. No privileged intents are needed.
+3. Under **OAuth2 → URL Generator**, tick `bot` and `applications.commands`, and under Bot
+   Permissions tick **Send Messages** and **Embed Links**. Open the link it makes and add the bot
+   to your server.
+4. In Media Review, go to **Settings → + Add app → Discord**. Paste the token, press **Test**, pick
+   your server, the **announcements** channel and **your channel** (one only you can see), and
+   **Save**.
+
+The bot connects out to Discord, so commands work without opening anything up. A friend's first
+command gets them a one-time link to connect their Discord to their Plex account.
+
+### Media Ops
+
+On **Settings**, generate a key under **Media Ops**. In Media Ops, go to **Settings → Add app →
+Media Review** with `http://media-review:8485` and that key. Its Review Queue card then shows the
+queue, Building up, Problem Reports, asks and Leaving Soon, and you can decide from either app.
+
+## If something isn't working
+
+- **A red dot on an app in Settings** comes with what's wrong underneath, in words. It's usually
+  the wrong address, a container on another network, or a wrong key. Fix it and press **Test**.
+- **The log** says what each sync and each overnight deletion did:
+  `docker logs --tail 100 media-review`. It never contains API keys or tokens, so it's safe to
+  paste into a GitHub issue.
+- **Lost the setup code?** Restart the container. A new one is printed at each start until setup
+  is done.
+
+## Good to know
+
+- **Your data** is one file, `media-review.db`, in the folder you mapped to `/config`: every
+  Downvote, decision, report and setting. Back up that folder and you've backed up everything.
+- **Your API keys stay on the server.** They're never sent to a browser.
+- **Nothing is deleted without you.** A title is only deleted after you Removed it and its Leaving
+  Soon ran out. Deletion runs overnight, between 04:00 and 07:00 in the container's time zone.
+- **Friends never see who Downvoted or objected.** Only you do, and Discord announcements never
+  name anyone.
+
+More detail is in [SECURITY.md](.github/SECURITY.md).
+
+### Container options
+
+Media Review is built like a [linuxserver.io](https://www.linuxserver.io/) image, so the usual
+options work:
+
+| Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `8485` | Web app and API port (Media Ops uses 8484) |
-| `DATA_DIR` | `src/data` | Where the database lives: every Downvote, decision and setting, the apps included |
-| `SYNC_MINUTES` | `15` | How often to read Plex and Tautulli |
-| `TZ` | the system's | The time zone that decides when "overnight" is, for deletions |
+| `PUID` / `PGID` | `911` | The user the app runs as. Unraid: `99` / `100`. Linux: run `id`. |
+| `TZ` | `Etc/UTC` | Your time zone, like `America/Chicago`. Decides when "overnight" is, for deletions. |
+| `UMASK` | `022` | File permissions for new files. |
+| `SYNC_MINUTES` | `15` | How often to read Plex and Tautulli. |
+| `PORT` | `8485` | The port inside the container. |
 
-## API for Media Ops (optional)
+## API for Media Ops
 
-Every request sends the key as `X-Api-Key`.
+Every request sends the key as `X-Api-Key`. The Owner's own pages use the same routes under
+`/api/owner/`, with their session instead of the key.
 
 - `GET /api/v1/status`: `{ app: "media-review", version }`
 - `GET /api/v1/review-queue`: `{ reviewQueue: [...] }`, one entry per Title waiting for the Owner, with each Downvote's Voter and Vote Weight
 - `POST /api/v1/review-queue/:ratingKey/keep` and `…/remove`: the Owner's decision. Remove answers `{ removed: true, endsAt }`
+- `GET /api/v1/building-up`: `{ buildingUp: [...] }`, the Titles with Downvotes that haven't reached the bar yet, closest first. Each has its weight so far, the weight needed, the Audience against the Minimum Audience, `progress` (0–1), and each Downvote with its Voter, the weight it adds now, and whether it counts yet
+- `POST /api/v1/building-up/:ratingKey/keep` and `…/remove`: the Owner deciding before the bar
 - `GET /api/v1/leaving-soon`: `{ leavingSoon: [...] }`, each with `endsAt` and `daysLeft`
 - `POST /api/v1/leaving-soon/:ratingKey/keep`: Keep after all
-- `GET /api/v1/building-up`: `{ buildingUp: [...] }`, the Titles with Downvotes that haven't reached the bar yet, closest first. Each has its weight so far, the weight needed, the Audience against the Minimum Audience, `progress` (0–1), and each Downvote with its Voter, the weight it adds now, and whether it counts yet
-- `POST /api/v1/building-up/:ratingKey/keep` and `…/remove`: the Owner deciding before the bar. Keep clears its Downvotes; Remove sends it to Leaving Soon
 - `GET /api/v1/problem-reports`: `{ problemReports: [...] }`, the open Problem Reports, oldest first, each with its Title, the part (`"S2 E3 · Title"`, `"Season 2"`, or `null` for the whole Title), the reason, and every reporter with their note
 - `POST /api/v1/problem-reports/:id/resolve` and `…/close`: the Owner's decision, with an optional `{ "note": "…" }` the reporters see
 - `GET /api/v1/held-back`: `{ heldBack: [...] }`, deleted Titles blocklisted in Seerr, the ones friends asked for first, each with who asked and the Title's history
-- `POST /api/v1/held-back/:ratingKey/bring-back` and `…/decline`: the Owner's decision, with an optional `{ "note": "…" }` for the friends who asked. Bring back takes it off Seerr's blocklist and requests it
+- `POST /api/v1/held-back/:ratingKey/bring-back` and `…/decline`: the Owner's decision, with an optional `{ "note": "…" }` for the friends who asked
 - `GET /api/v1/poster/:ratingKey`: the Title's poster
 
-The Owner's own pages use the same routes under `/api/owner/` with their session instead of the key.
+## What's in this repo
 
-Voters sign in with Plex at the app's address. The Owner signs in the same way and finds the **Review Queue** and **Settings** in the top bar.
+| | |
+|---|---|
+| [`unraid-template.xml`](unraid-template.xml) | Unraid template |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
+| [`CONTEXT.md`](CONTEXT.md) | What the words mean: Downvote, Audience, Sample, Leaving Soon… |
+| [`docs/spec.md`](docs/spec.md) | Exactly what it does, and why |
+| [`src/`](src/) | The source code and the Dockerfile (see [CONTRIBUTING](.github/CONTRIBUTING.md) to work on it) |
 
-## Development
+## License and thanks
 
-```sh
-cd src
-npm install   # lint, format and typecheck tools only
-npm test
-npm run lint && npm run typecheck && npm run format:check
-```
+Media Review is free and open source under the [MIT License](LICENSE).
 
-CI (`.github/workflows/ci.yml`) runs lint, typecheck and the tests on every pull request, then builds the image and smoke-tests it. On `main` it publishes `:latest`.
+It's only possible because of the apps it talks to: Plex, Tautulli, Radarr, Sonarr, Seerr and
+Discord. Thanks also to linuxserver.io for the base image. Media Review only uses their public
+APIs and doesn't include any of their code. Licenses and links are in
+[THIRD-PARTY-NOTICES.md](src/THIRD-PARTY-NOTICES.md).
 
-## Releasing
-
-1. Move the "Unreleased" notes in `CHANGELOG.md` under a new `## [x.y.z] - date` heading, and set the same version in `src/package.json`.
-2. Merge that, then tag it: `git tag vx.y.z && git push origin vx.y.z`.
-3. CI publishes `ghcr.io/kaiserhomelab/media-review:x.y.z` and `:x.y`, and makes the GitHub release from the changelog.
+Plex and the other app names are trademarks of their owners. Media Review is an independent
+project and isn't affiliated with or endorsed by any of them.

@@ -1,0 +1,38 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The quickest way to a fix is the end of the log:
+        `docker logs --tail 100 media-review` (Unraid: Docker → media-review → Logs).
+        It never contains API keys or tokens.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead? A red dot in Settings shows the reason underneath; paste that too.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it?
+      description: Steps to make it happen, if you know them.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The last 100 lines of the container's log.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Media Review version
+      description: 'From `docker inspect -f ''{{index .Config.Labels "build_version"}}'' media-review`, or the image tag you run.'
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where does it run?
+      options: [Unraid, Linux, Synology, TrueNAS, Windows, macOS, Other]

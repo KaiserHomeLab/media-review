@@ -2,7 +2,7 @@
 // Copyright (c) 2026 KaiserHomeLab
 //
 // The Owner's page: the Review Queue, Problem Reports, Leaving Soon and what's held back, with their decisions. Settings has its own page.
-// The same decisions can be made in Media Ops; both go to the same place (ADR 0003).
+// The same decisions can be made in Media Ops; both go to the same place.
 'use strict';
 
 const $ = id => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -27,7 +27,8 @@ function ago(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} days ago`;
+  const days = Math.round(s / 86400);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 function entry(e) {
@@ -238,7 +239,7 @@ function buildingEntry(b) {
     el(
       'div',
       'line',
-      `${num(b.downvoteWeight)} of ${num(b.neededWeight)} weight needed · ${b.audience} of ${b.minimumAudience} have tried it${short ? ' (too few yet)' : ''} · first ${ago(b.firstAt)}`,
+      `${num(b.downvoteWeight)} weight, ${num(b.neededWeight)} needed · ${b.audience} of ${b.minimumAudience} have tried it${short ? ' (too few yet)' : ''} · first ${ago(b.firstAt)}`,
     ),
     el(
       'div',

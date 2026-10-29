@@ -333,7 +333,7 @@ test('the public address is set, cleared, and used for sign-in', async () => {
   assert.equal(s.apps.read().publicUrl, undefined);
 });
 
-// ------------------------------------------------------------------ the rules (ticket 0011)
+// ------------------------------------------------------------------ the rules
 
 test('only the Owner sees or changes the rules', async () => {
   const s = await setup({ setUp: true });

@@ -4,7 +4,7 @@
 // Problem Reports: a Voter says a copy of a Title is broken or poor quality, on the whole Title or, for a
 // show, one season or episode. A second Voter with the same problem joins the open report ("me too").
 // The Owner resolves or closes it, with an optional note, and everyone on it sees which. A Problem Report
-// never counts as a Downvote (ADR 0001): nothing here touches Downvotes or the Review Queue.
+// never counts as a Downvote: nothing here touches Downvotes or the Review Queue.
 'use strict';
 
 /** @typedef {import('./store').Store} Store */

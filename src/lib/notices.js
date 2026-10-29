@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// Discord announcements and the Owner's messages (ticket 0010). Nothing posts to Discord straight from a
+// Discord announcements and the Owner's messages. Nothing posts to Discord straight from a
 // decision: collect() looks at what has happened and records one notice per event, under a key that names it
 // (leaving:<title>:<when>…), so running it again records nothing new. deliver() then sends what hasn't gone,
 // oldest first, and keeps the rest for next time if Discord is down. Only events from when the Owner set the
