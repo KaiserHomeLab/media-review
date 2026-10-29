@@ -18,6 +18,10 @@ number, a fix the last one.
 - Deletion when Leaving Soon is over: overnight (04:00–07:00 server time), through Radarr and one or
   two Sonarrs (TV and anime), every copy, with an import-list exclusion. A Title that can't be
   deleted stays Leaving Soon with the reason shown to the Owner, and is tried again the next night.
+- Objections: while a Title is Leaving Soon, friends who didn't Downvote it can ask for it to be kept.
+  Each weighs what their Downvote would, and reaching the Objection bar (2: one friend who tried it)
+  sends it back to the Review Queue, marked as sent back with who objected. Only once per round: Removed
+  again, it takes no Objections.
 - The Owner's own Review Queue page with Keep, so Media Review works without Media Ops. Media Ops is
   an optional second place to decide, through the API: the Review Queue, and Keep.
 - Titles sorted by Plex library: a tab per library (Movies, TV Shows, Anime…, as named and ordered in
