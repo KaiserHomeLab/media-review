@@ -5,9 +5,8 @@ Friends who use a Plex server Downvote movies and shows they think should leave 
 It works on its own. If you also run [Media Ops](https://github.com/KaiserHomeLab/media-ops), you can connect the two and decide from either.
 
 - What the words mean: [CONTEXT.md](CONTEXT.md)
-- What it does: [docs/spec.md](docs/spec.md)
-- What's being built: [docs/tickets/](docs/tickets/README.md)
-- Why it's built this way: [docs/adr/](docs/adr/)
+- What it does, and why: [docs/spec.md](docs/spec.md)
+- What changed: [CHANGELOG.md](CHANGELOG.md)
 
 ## Installing on Unraid
 

@@ -1,6 +1,6 @@
 # Media Review: spec
 
-Media Review lets the people the Owner's Plex server is shared with signal that a Title is no longer wanted. A weighted threshold sends a Title to the Review Queue, and the Owner decides Keep or Remove, in Media Review itself or, if they use it, in Media Ops. Media Review holds every rule and carries out every decision (ADR 0002). It works fully without Media Ops (ADR 0003).
+Media Review lets the people the Owner's Plex server is shared with signal that a Title is no longer wanted. A weighted threshold sends a Title to the Review Queue, and the Owner decides Keep or Remove, in Media Review itself or, if they use it, in Media Ops. Media Review holds every rule and carries out every decision: Media Ops is a public dashboard other people install, so no house rules or user identities belong there. It works fully without Media Ops, because not everyone who runs Media Review runs Media Ops; both call the same actions, so a decision made in one shows in the other.
 
 Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spec and CONTEXT.md disagree, CONTEXT.md wins and this spec is fixed.
 
@@ -9,7 +9,7 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - Runs as one Docker container on the Owner's Unraid server, next to Plex, Sonarr, Radarr, Tautulli and Seerr: `ghcr.io/kaiserhomelab/media-review`, published by CI and installed with an Unraid template. It sits on the Owner's custom Docker network and reaches the other apps by container name.
 - Friends reach the web app from the internet through the Owner's Cloudflare Tunnel.
 - Anime has its own Plex library and its own Sonarr instance, separate from TV.
-- Holds its own keys for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord (ADR 0002, Consequences).
+- Holds its own keys for Plex, Tautulli, Sonarr, Radarr, Seerr and Discord.
 - Works with or without Media Ops. If Media Ops is down or not installed, the Owner decides in Media Review's own web app.
 
 ## Interfaces
@@ -20,20 +20,20 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - The Owner is the Plex server's owner account.
 - Voters can browse Titles, cast and withdraw a Downvote, see Leaving Soon, make an Objection, file a Problem Report, and link a Discord account.
 - Voters see only their own Downvotes and Objections. Only the Owner can see who cast each one.
-- The Owner has a **Review Queue** page with every entry and its details (the same as the Media Ops card) and the decisions: Keep now, Remove (0004) and Problem Reports (0007) later.
+- The Owner has a **Review Queue** page with every entry and its details (the same as the Media Ops card) and the decisions: Keep now, Remove and Problem Reports later.
 - **First setup** (confirmed by the Owner): a fresh install has no Owner. It prints a one-time setup code in its log, and the setup page asks for it before anything else. Then the Owner signs in with the Plex account that owns the server and picks the server and the address to reach it. Media Review keeps that sign-in's token for Plex. The account that owns the linked server is the Owner from then on.
 - **Settings page** (Owner only; confirmed by the Owner): the apps Media Review works with, each with an address, an API key, **Test** and **Save**.
   - The apps are Plex (address), Tautulli, Radarr, Sonarr, Sonarr (anime) and Seerr.
   - The page also has the public address, and the API key for Media Ops, which is only needed if Media Ops is used.
   - Everything is kept in the database in `/config`, not in container variables. Saved keys and the Plex token are never sent back to the browser, and changes apply without a restart.
-  - The rules in [Settings](#settings) get a section here next (ticket 0011).
+  - The rules in [Settings](#settings) are on the same page, under Rules.
 
 ### Discord bot
 
 - A Discord account is linked once to a Plex sign-in, from the web app.
 - Linked accounts can Downvote, make an Objection and file a Problem Report from Discord.
 - An unlinked Discord user who tries any of those gets a prompt with a link to connect their account in the web app. Nothing is recorded.
-- **Confirmed by the Owner (0009):**
+- **Confirmed by the Owner:**
   - **Linking:** any command from an unlinked account replies with a one-time link, valid for 30 minutes, to `link.html`. There the person signs in with Plex if they need to and presses Connect. `/link` gives a fresh link. Linking again replaces the old link, on either side. The web app shows "connected as …" with Disconnect, and `/unlink` does the same.
   - **Commands:** `/downvote`, `/withdraw` (a Downvote or an Objection), `/object`, `/report` (problem, optional part: whole show, a season or an episode, and an optional note), `/mine`, `/link` and `/unlink`. Titles autocomplete: `/object` offers only what's Leaving Soon, and `/withdraw` offers only the person's own Downvotes and Objections. The commands run through the same rules as the web app. The Owner can link, but the Owner doesn't Downvote, object or report.
   - **Replies:** private to the person who used the command (ephemeral). A command that takes over about 2.5 seconds is answered "thinking…" first, then edited.
@@ -41,7 +41,7 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
   - **Setup:** Settings → + Add app → Discord. Paste the bot token, press Test to list the servers the bot is in, pick one and Save. The token is never sent back to the browser.
 - Announcements to the server channel: a Title entering Leaving Soon, and a resolved Problem Report (the reporter is told directly too).
 - Messages to the Owner: a Title entering the Review Queue, and an Objection sending a Title back to the Owner.
-- **Confirmed by the Owner (0010):**
+- **Confirmed by the Owner:**
   - **The Owner's messages** go to a private channel the Owner picks in Settings, not as DMs. Besides the two above, they cover: a new Problem Report (one per report, not per "me too"), an ask to bring back, a deletion that failed (once per Leaving Soon), and an app unreachable for an hour, plus a message when it's back.
   - **The announcement channel** gets: Leaving Soon, a last-day reminder the day before it's deleted, "not leaving for now" when Objections send it back, "staying after all" after Keep after all, "coming back" when brought back, and a resolved Problem Report. A closed one isn't announced.
   - **Look:** each announcement is a Discord embed with the poster. Discord fetches the poster by a signed link (`/cover/:key/:sig`), so only announced posters can be fetched without signing in.
@@ -140,7 +140,7 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 ### Re-requests after deletion
 
 - If anyone requests a deleted Title again, the request goes to the Owner with the Title's history, instead of being approved automatically.
-- Seerr can't hold back one Title's request for the Owner (see Q1), so it works like this (confirmed by the Owner, 0008):
+- Seerr can't hold back one Title's request for the Owner (see Q1), so it works like this (confirmed by the Owner):
   - When Media Review deletes a Title, it adds it to Seerr's blocklist. Nobody can request it there. This is called **held back**, and it lasts until the Owner brings the Title back.
   - Friends see held-back Titles under a **Gone** tab in Media Review, and can **Ask to bring it back**, with an optional note. They see their own asks, and what the Owner decided, for 30 days. They never see who else asked.
   - The Owner sees each held-back Title with who asked and the Title's history: each Remove's Downvotes (with Vote Weight) and Objections, every Keep and Remove, and each deletion. They choose **Bring back** or **Decline**, with an optional note the friends who asked see. The Owner can bring back a Title nobody asked for.
@@ -151,10 +151,10 @@ The check runs whenever a Downvote is cast or withdrawn and whenever new play hi
 
 ### Problem Reports
 
-- A Voter reports that a specific copy of a Title is broken or poor quality and asks for it to be replaced. A Problem Report never counts as a Downvote (ADR 0001).
+- A Voter reports that a specific copy of a Title is broken or poor quality and asks for it to be replaced. A Problem Report never counts as a Downvote. Media Review has its own Problem Reports rather than using Seerr's Issues, so everything a Voter does happens in one place.
 - It waits for the Owner, who resolves or closes it in Media Review, or in Media Ops if connected.
 - The reporter is told when it is resolved or closed: in the web app, and on Discord if linked. A resolved one is also announced.
-- **Confirmed by the Owner (0007):**
+- **Confirmed by the Owner:**
   - For a show, a report is on the whole show, one season, or one episode, picked from the show's episodes in Plex.
   - The Voter picks a reason: Won't play, Video, Audio, Subtitles, Wrong title or language, Poor quality, or Other. A note is optional, except for Other.
   - The Owner can add an optional note when resolving or closing it, and the reporters see it with the outcome.
@@ -180,21 +180,32 @@ All of these are editable by the Owner. Defaults:
 | Leaving Soon length | 14 days |
 | Deletion hour | 04:00 server time; deletions run for three hours from it |
 
-Changing a setting re-runs the threshold check for every Title that isn't queued. It never takes a Title out of the queue. A new Leaving Soon length or deletion hour applies from the next Remove; Titles already Leaving Soon keep their date. The Objection bar is added with Objections (0006).
+Changing a setting re-runs the threshold check for every Title that isn't queued. It never takes a Title out of the queue. A new Leaving Soon length or deletion hour applies from the next Remove; Titles already Leaving Soon keep their date. The Objection bar is added with Objections.
+
+## Still to check on the real servers
+
+Built and tested against stand-ins, not yet seen working against the Owner's own apps. The deploy checklist walks through each.
+
+- Tautulli play history matches what Media Review stores (Q3).
+- Plex's Leaving Soon collection: created, pinned to Home and Recommended, kept in step, emptied.
+- Overnight deletion through Radarr and both Sonarrs, with the import-list exclusion.
+- Seerr's blocklist on deletion, and Bring back.
+- Discord: commands, linking, announcements with posters, the Owner's channel, DMs.
+- A re-create and a reboot keep everything.
 
 ## Open questions
 
-Each one is assigned to the ticket that has to answer it. Answered ones stay here as the record.
+Answered ones stay here as the record.
 
-- **Q1. Seerr hold-back.** *Answered in 0008, from Seerr's source code (3.5.1).* No. Auto-approval depends only on the user's permissions (`AUTO_APPROVE`, `AUTO_APPROVE_MOVIE`, `AUTO_APPROVE_TV`, `MANAGE_REQUESTS`, `ADMIN`), and nothing holds back one Title. The nearest thing is the blocklist: `POST /api/v1/blocklist` with `{ tmdbId, mediaType, title, user }` makes a request for that Title fail with "This media is blocklisted", and `DELETE /api/v1/blocklist/:tmdbId?mediaType=` lifts it. So a deleted Title is blocklisted, and the ask goes through Media Review. The Radarr/Sonarr import-list exclusion was not used as the fallback: it is meant for import lists, it wasn't confirmed whether it stops a request from Seerr, and either way the request would fail in Radarr rather than reach the Owner.
-- **Q2. Anime vs TV.** *Answered by the Owner.* Anime has its own Plex library and its own Sonarr instance. Media Review tells anime from TV by Plex library, and deletes an anime Title through the anime Sonarr. Tickets 0011 and 0005.
-- **Q3. Tautulli play duration.** *Answered in 0001, from Tautulli's API documentation; not yet checked against the Owner's server.* `get_history` with `grouping=0` returns one row per session with `user_id` (the Plex account id), `media_type`, `rating_key` (and `grandparent_rating_key`, the show, for episodes), `play_duration` in seconds with pauses excluded (`duration` before Tautulli 2.13) and `watched_status` (1 when Tautulli counts it as finished: a Watch). Media Review adds these up per Voter per Title. `get_users` lists the Voters: everyone but the admin (the Owner) and the Local user, and only those still active.
-- **Q4. Base Weight curve.** *Answered by the Owner:* a Voter's watch time in the window divided by the heaviest Voter's. Built in 0001.
-- **Q5. Downvotes from outside the Audience.** *Answered by the Owner:* a Downvote from a Voter who hasn't Sampled the Title is kept and counts once they Sample it, and the Voter is told it won't count until then. Built in 0001.
+- **Q1. Seerr hold-back.** *Answered from Seerr's source code (3.5.1).* No. Auto-approval depends only on the user's permissions (`AUTO_APPROVE`, `AUTO_APPROVE_MOVIE`, `AUTO_APPROVE_TV`, `MANAGE_REQUESTS`, `ADMIN`), and nothing holds back one Title. The nearest thing is the blocklist: `POST /api/v1/blocklist` with `{ tmdbId, mediaType, title, user }` makes a request for that Title fail with "This media is blocklisted", and `DELETE /api/v1/blocklist/:tmdbId?mediaType=` lifts it. So a deleted Title is blocklisted, and the ask goes through Media Review. The Radarr/Sonarr import-list exclusion was not used as the fallback: it is meant for import lists, it wasn't confirmed whether it stops a request from Seerr, and either way the request would fail in Radarr rather than reach the Owner.
+- **Q2. Anime vs TV.** *Answered by the Owner.* Anime has its own Plex library and its own Sonarr instance. Media Review tells anime from TV by Plex library, and deletes an anime Title through the anime Sonarr.
+- **Q3. Tautulli play duration.** *Answered from Tautulli's API documentation; not yet checked against the Owner's server.* `get_history` with `grouping=0` returns one row per session with `user_id` (the Plex account id), `media_type`, `rating_key` (and `grandparent_rating_key`, the show, for episodes), `play_duration` in seconds with pauses excluded (`duration` before Tautulli 2.13) and `watched_status` (1 when Tautulli counts it as finished: a Watch). Media Review adds these up per Voter per Title. `get_users` lists the Voters: everyone but the admin (the Owner) and the Local user, and only those still active.
+- **Q4. Base Weight curve.** *Answered by the Owner:* a Voter's watch time in the window divided by the heaviest Voter's.
+- **Q5. Downvotes from outside the Audience.** *Answered by the Owner:* a Downvote from a Voter who hasn't Sampled the Title is kept and counts once they Sample it, and the Voter is told it won't count until then.
 
 ## Out of scope
 
 - Any downvote rule or user identity in Media Ops.
-- Using Seerr Issues for Problem Reports (ADR 0001).
+- Using Seerr Issues for Problem Reports (see Problem Reports).
 - Downvoting single episodes or seasons. A Title is a whole show.
 - Media Review replacing or fixing a reported copy itself. The Owner does that in Sonarr/Radarr.

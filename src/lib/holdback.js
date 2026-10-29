@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// Holding back deleted Titles (ticket 0008). Seerr can't send one Title's requests to the Owner, so a deleted
+// Holding back deleted Titles. Seerr can't send one Title's requests to the Owner, so a deleted
 // Title goes on Seerr's blocklist, where nobody can request it, and stays there until the Owner brings it back.
 // Friends see it under Gone in Media Review and ask for it there; the Owner sees each ask with the Title's
 // history (its Downvotes, Objections, Keeps and Removes) and brings it back or declines, with an optional note.

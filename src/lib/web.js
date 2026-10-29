@@ -659,7 +659,7 @@ function createApp({
       return json(res, 200, { asked: g[2] === 'ask' });
     }
 
-    // Owner only: the Review Queue and its decisions, the same ones Media Ops can make (ADR 0003).
+    // Owner only: the Review Queue and its decisions, the same ones Media Ops can make.
     if (p.startsWith('/api/owner/') && !s.isOwner) return json(res, 403, { error: 'Owner only' });
     if (p.startsWith('/api/owner/')) {
       const handled =
@@ -687,7 +687,7 @@ function createApp({
   }
 
   // The Owner's routes, the same under /api/v1 (Media Ops, API key) and /api/owner (the Owner's session), so a
-  // decision behaves the same wherever it's made (ADR 0003):
+  // decision behaves the same wherever it's made:
   //   GET  /review-queue                 POST /review-queue/:key/keep    POST /review-queue/:key/remove
   //   GET  /leaving-soon                 POST /leaving-soon/:key/keep    (Keep after all)
   //   GET  /building-up                  POST /building-up/:key/keep     POST /building-up/:key/remove

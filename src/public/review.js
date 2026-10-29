@@ -2,7 +2,7 @@
 // Copyright (c) 2026 KaiserHomeLab
 //
 // The Owner's page: the Review Queue, Problem Reports, Leaving Soon and what's held back, with their decisions. Settings has its own page.
-// The same decisions can be made in Media Ops; both go to the same place (ADR 0003).
+// The same decisions can be made in Media Ops; both go to the same place.
 'use strict';
 
 const $ = id => /** @type {HTMLElement} */ (document.getElementById(id));
