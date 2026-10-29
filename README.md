@@ -91,6 +91,14 @@ reminder, fixed problems), which never name who Downvoted. Plus a private channe
 Review Queue entries, Problem Reports, asks, failed deletions, and any app that's been unreachable
 for an hour.
 
+## Make it yours
+
+**Settings → Appearance** sets light or dark (or follows each device), the accent color (Plex
+amber, Jellyfin purple, Emby green, blue, teal or red), your own title and your own logo, for every
+page, your friends' included. They're the same options as Media Ops', so the two can match. The
+section colors (Downvotes amber, Problem Reports blue, Leaving Soon red, Held back purple, Building
+up teal) never change, so a section always looks like itself.
+
 ## Install
 
 **Unraid.** Save [`unraid-template.xml`](unraid-template.xml) to your flash drive as

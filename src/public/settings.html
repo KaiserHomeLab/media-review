@@ -38,6 +38,28 @@
         <div class="app-grid" id="apps"></div>
       </section>
 
+      <section class="card form" id="appearance-card" hidden>
+        <h2>Appearance</h2>
+        <p class="muted hint">How Media Review looks, for you and your friends. Changes show here right away; Save to keep them. The section colors (Downvotes amber, Problem Reports blue, Leaving Soon red…) stay the same whatever you pick.</p>
+        <div class="field"><span>Theme</span>
+          <div class="checks" id="theme-choice">
+            <label class="check"><input type="radio" name="theme" value="auto" /> Follow the device</label>
+            <label class="check"><input type="radio" name="theme" value="dark" /> Dark</label>
+            <label class="check"><input type="radio" name="theme" value="light" /> Light</label>
+          </div>
+        </div>
+        <div class="field"><span>Accent color</span><div class="swatches" id="accent-swatches"></div></div>
+        <label class="field"><span>Title <span class="muted opt">optional</span></span>
+          <input id="look-title" maxlength="40" placeholder="Media Review" spellcheck="false" />
+          <small>Shown in the top bar and the browser tab, for everyone.</small>
+        </label>
+        <div class="field"><span>Logo <span class="muted opt">optional</span></span>
+          <div class="logo-row"><span id="logo-preview" class="logo-preview"></span><label class="btn small" for="logo-file">Upload…</label><input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp" hidden /><button class="btn small ghost" type="button" id="logo-remove" hidden>Remove</button></div>
+          <small>PNG, JPEG or WebP, up to 256 KB. Square works best.</small>
+        </div>
+        <div class="row"><button class="btn primary" type="button" id="look-save">Save</button><span class="result" id="look-result"></span></div>
+      </section>
+
       <section class="card form" id="rules-card" hidden>
         <h2>Rules</h2>
         <p class="muted">

@@ -27,6 +27,7 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
   - The page also has the public address, and the API key for Media Ops, which is only needed if Media Ops is used.
   - Everything is kept in the database in `/config`, not in container variables. Saved keys and the Plex token are never sent back to the browser, and changes apply without a restart.
   - The rules in [Settings](#settings) are on the same page, under Rules.
+  - **Appearance** (the same options as Media Ops'): theme (follow the device, dark or light), accent color (Plex amber, Jellyfin purple, Emby green, blue, teal, red), a title and a logo (PNG, JPEG or WebP up to 256 KB), for every page. The server writes them into each page as it is sent. The section colors never change with the accent.
 
 ### Discord bot
 
