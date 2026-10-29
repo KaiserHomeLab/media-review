@@ -15,8 +15,14 @@
   font-display: swap;
 }
 
+/* Dark by default; light from the system setting unless dark is forced, or forced light (Settings →
+   Appearance writes data-theme="dark|light" on <html>). data-accent swaps the accent: each preset has a
+   dark and a light shade, checked for contrast in both. The section colors (Downvotes, Problem Reports,
+   Leaving Soon, Held back, Building up) and good/critical never change with the accent. */
 :root {
   color-scheme: dark;
+  --accent-dark: #e5a00d; /* Plex amber */
+  --accent-light: #8f6200;
   --bg: #121211;
   --surface-1: #1a1a19;
   --surface-2: #232321;
@@ -24,18 +30,20 @@
   --text-primary: #f4f3ee;
   --text-secondary: #c3c2b7;
   --text-muted: #8b8a80;
-  --accent: #e5a00d; /* Plex amber */
+  --accent: var(--accent-dark);
   --on-accent: #1a1a19; /* text on an accent background */
   --good: #0ca30c;
   --critical: #d03b3b;
+  --downvote: #e5a00d; /* Downvotes and the Review Queue */
   --info: #4a90e2; /* Problem Reports */
   --held: #9b7fe6; /* held back: deleted, blocked in Seerr */
   --building: #2bb3a3; /* Downvoted, not at the bar yet */
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
+/* Same values twice: one rule can't be both inside and outside the media query. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     color-scheme: light;
     --bg: #f3f2ee;
     --surface-1: #fcfcfb;
@@ -44,12 +52,51 @@
     --text-primary: #0b0b0b;
     --text-secondary: #52514e;
     --text-muted: #77766f;
-    --accent: #8f6200;
+    --accent: var(--accent-light);
     --on-accent: #fff;
+    --downvote: #8f6200;
     --info: #1f62b8;
     --held: #6a4fc0;
     --building: #12796e;
   }
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3f2ee;
+  --surface-1: #fcfcfb;
+  --surface-2: #f0efec;
+  --line: #e2e1dc;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --accent: var(--accent-light);
+  --on-accent: #fff;
+  --downvote: #8f6200;
+  --info: #1f62b8;
+  --held: #6a4fc0;
+  --building: #12796e;
+}
+
+/* Accent presets, the same as Media Ops'. */
+:root[data-accent='purple'] {
+  --accent-dark: #b98cf0;
+  --accent-light: #7a3fbf;
+}
+:root[data-accent='green'] {
+  --accent-dark: #5cc46a;
+  --accent-light: #2c7a35;
+}
+:root[data-accent='blue'] {
+  --accent-dark: #6aa6f2;
+  --accent-light: #1f63c7;
+}
+:root[data-accent='teal'] {
+  --accent-dark: #3cc4b2;
+  --accent-light: #00756a;
+}
+:root[data-accent='red'] {
+  --accent-dark: #f07a70;
+  --accent-light: #c0302a;
 }
 
 * {
@@ -272,8 +319,8 @@ h2 .count {
   white-space: nowrap;
 }
 .chip.review {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--downvote);
+  border-color: color-mix(in srgb, var(--downvote) 45%, var(--line));
 }
 /* Library tabs: Media Ops' segmented control. */
 .seg {
@@ -877,7 +924,7 @@ code {
    Downvotes amber, Problem Reports blue, Leaving Soon red: on the card's top edge, its heading badge,
    and a bar down the side of every entry, so a glance says which list you're in. */
 .kind-downvote {
-  --kind: var(--accent);
+  --kind: var(--downvote);
 }
 .kind-problem {
   --kind: var(--info);
@@ -1133,4 +1180,76 @@ button.chip.founder:focus-visible {
     left: auto;
     right: max(16px, env(safe-area-inset-right, 0px));
   }
+}
+
+/* ------------------------------------------------------------------ Settings: appearance, as in Media Ops */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.swatch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.swatch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.swatch i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--sw-dark);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .swatch i {
+    background: var(--sw-light);
+  }
+}
+:root[data-theme='light'] .swatch i {
+  background: var(--sw-light);
+}
+.swatch:has(input:checked) {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--text-primary);
+}
+.swatch:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.logo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-preview img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: cover;
+  display: block;
+}
+/* The Owner's own logo in place of the amber triangle. */
+img.logo.custom {
+  background: none;
+  object-fit: cover;
+}
+/* Radio buttons in a form field keep their own size (.field input is for text boxes). */
+.field .check input {
+  width: auto;
+  padding: 0;
+  margin: 0;
+}
+.field > span .opt {
+  font-weight: 400;
+  margin-left: 4px;
 }

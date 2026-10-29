@@ -425,6 +425,117 @@ $('rules-save').addEventListener('click', async () => {
   );
 });
 
+// ------------------------------------------------------------------ appearance
+// As in Media Ops: theme, accent, title and logo. The page shows a change straight away; Save keeps it.
+let look = null;
+const root = document.documentElement;
+/** @param {{ theme: string, accent: string }} a */
+function preview(a) {
+  if (a.theme === 'auto') delete root.dataset.theme;
+  else root.dataset.theme = a.theme;
+  if (a.accent === 'amber') delete root.dataset.accent;
+  else root.dataset.accent = a.accent;
+}
+const chosen = () => ({
+  theme:
+    /** @type {HTMLInputElement | null} */ (document.querySelector('input[name="theme"]:checked'))?.value ?? 'auto',
+  accent:
+    /** @type {HTMLInputElement | null} */ (document.querySelector('input[name="accent"]:checked'))?.value ?? 'amber',
+});
+function showLook() {
+  for (const r of document.querySelectorAll('input[name="theme"]')) r.checked = r.value === look.theme;
+  $('accent-swatches').replaceChildren(
+    ...look.accents.map(x => {
+      const label = el('label', 'swatch');
+      label.title = x.label;
+      const input = Object.assign(el('input', ''), {
+        type: 'radio',
+        name: 'accent',
+        value: x.id,
+        checked: x.id === look.accent,
+      });
+      const dot = el('i', '');
+      dot.setAttribute('aria-hidden', 'true');
+      // The page's CSP allows no style="" attributes; setting them from script is fine.
+      dot.style.setProperty('--sw-dark', x.dark);
+      dot.style.setProperty('--sw-light', x.light);
+      label.append(input, dot, el('span', '', x.label));
+      return label;
+    }),
+  );
+  /** @type {HTMLInputElement} */ ($('look-title')).value = look.title;
+  const logo = look.logo;
+  $('logo-preview').replaceChildren(
+    ...(logo ? [Object.assign(el('img', ''), { src: `/branding/logo?v=${logo.hash}`, alt: 'Current logo' })] : []),
+  );
+  $('logo-remove').hidden = !logo;
+  // The top bar here shows it too.
+  const head = document.querySelector('header.top .logo');
+  if (head) {
+    const next = logo
+      ? Object.assign(el('img', 'logo custom'), { src: `/branding/logo?v=${logo.hash}`, alt: '' })
+      : el('span', 'logo');
+    if (!logo) next.setAttribute('aria-hidden', 'true');
+    head.replaceWith(next);
+  }
+  preview(look);
+}
+async function loadLook() {
+  look = await api('/api/owner/appearance');
+  showLook();
+  $('appearance-card').hidden = false;
+}
+$('appearance-card').addEventListener('change', e => {
+  if (
+    /** @type {HTMLInputElement} */ (e.target).name === 'theme' ||
+    /** @type {HTMLInputElement} */ (e.target).name === 'accent'
+  )
+    preview(chosen());
+});
+$('look-save').addEventListener('click', async () => {
+  try {
+    look = await api('/api/owner/appearance', 'PUT', {
+      ...chosen(),
+      title: /** @type {HTMLInputElement} */ ($('look-title')).value,
+    });
+    showLook();
+    const h1 = document.querySelector('header.top h1');
+    if (h1) h1.textContent = look.title || 'Media Review';
+    say($('look-result'), 'Saved', true);
+  } catch (e) {
+    say($('look-result'), e.message, false);
+  }
+});
+$('logo-file').addEventListener('change', async e => {
+  const input = /** @type {HTMLInputElement} */ (e.target);
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  if (file.size > 256 * 1024) return say($('look-result'), 'The logo must be 256 KB or smaller', false);
+  const data = await new Promise((ok, refuse) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => refuse(new Error("Couldn't read that file"));
+    r.readAsDataURL(file);
+  });
+  try {
+    look = await api('/api/owner/appearance/logo', 'POST', { data });
+    showLook();
+    say($('look-result'), 'Logo saved', true);
+  } catch (err) {
+    say($('look-result'), err.message, false);
+  }
+});
+$('logo-remove').addEventListener('click', async () => {
+  try {
+    look = await api('/api/owner/appearance/logo', 'DELETE', {});
+    showLook();
+    say($('look-result'), 'Logo removed', true);
+  } catch (err) {
+    say($('look-result'), err.message, false);
+  }
+});
+
 async function load() {
   const s = await api('/api/owner/settings');
   S = s;
@@ -465,6 +576,7 @@ $('generate').addEventListener('click', async () => {
 if (new URLSearchParams(location.search).get('welcome')) $('welcome').hidden = false;
 Promise.all([
   load().then(checkAll),
+  loadLook(),
   loadRules(),
   api('/api/owner/api-key').then(({ apiKey }) => showKey(apiKey)),
 ]).catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));

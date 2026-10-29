@@ -708,3 +708,56 @@ test('Building up: the Owner and Media Ops see it and can Keep or Remove now; Vo
   assert.ok(store.isLeaving('m1'));
   assert.deepEqual(await (await post(owner, '/api/owner/building-up/m1/keep')).json(), { error: 'not-building-up' });
 });
+
+test('Appearance: the Owner sets theme, accent, title and logo; every page is sent with them', async () => {
+  const { req, signIn } = await setup();
+  const [owner, alice] = await Promise.all([1, 2].map(async pin => (await signIn(pin)).cookie));
+  /** @param {string} cookie @param {string} method @param {string} p @param {unknown} body */
+  const send = (cookie, method, p, body) =>
+    req(p, { method, cookie, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  const before = await (await req('/')).text();
+  assert.match(before, /<html lang="en">/, 'the default look adds nothing');
+  assert.equal((await req('/api/owner/appearance', { cookie: alice })).status, 403);
+  const form = await (await req('/api/owner/appearance', { cookie: owner })).json();
+  assert.deepEqual(
+    [form.theme, form.accent, form.title, form.logo, form.accents.length],
+    ['auto', 'amber', '', null, 6],
+  );
+
+  assert.equal((await send(owner, 'PUT', '/api/owner/appearance', { title: '<b>x</b>' })).status, 400);
+  const saved = await (
+    await send(owner, 'PUT', '/api/owner/appearance', {
+      theme: 'light',
+      accent: 'teal',
+      title: 'Kaiser Review',
+      extra: 1,
+    })
+  ).json();
+  assert.deepEqual([saved.theme, saved.accent, saved.title], ['light', 'teal', 'Kaiser Review']);
+  const page = await (await req('/review.html')).text();
+  assert.match(page, /<html lang="en" data-theme="light" data-accent="teal">/);
+  assert.match(page, /<title>Kaiser Review · Review Queue<\/title>/);
+  assert.match(page, /<h1>Kaiser Review<\/h1>/);
+
+  // A logo: real image bytes only, served to anyone, by a link that changes with it.
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64');
+  assert.match(
+    (
+      await (
+        await send(owner, 'POST', '/api/owner/appearance/logo', { data: Buffer.from('<svg/>').toString('base64') })
+      ).json()
+    ).error,
+    /PNG, JPEG or WebP/,
+  );
+  const withLogo = await (await send(owner, 'POST', '/api/owner/appearance/logo', { data: png })).json();
+  assert.match(withLogo.logo.hash, /^[0-9a-f]{16}$/);
+  assert.match(
+    await (await req('/')).text(),
+    new RegExp(`<img class="logo custom" src="/branding/logo\\?v=${withLogo.logo.hash}"`),
+  );
+  const logo = await req('/branding/logo');
+  assert.equal(logo.headers.get('content-type'), 'image/png');
+  await send(owner, 'DELETE', '/api/owner/appearance/logo', {});
+  assert.equal((await req('/branding/logo')).status, 404);
+});

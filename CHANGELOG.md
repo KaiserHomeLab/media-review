@@ -8,6 +8,9 @@ number, a fix the last one.
 
 ### Added
 
+- **Settings → Appearance**, the same as Media Ops': light or dark (or follow each device), the
+  accent color, your own title and your own logo, for every page, friends' included. The section
+  colors (Downvotes amber, Problem Reports blue, Leaving Soon red…) stay the same whatever you pick.
 - **Building up** on the Review Queue page: every title with Downvotes that hasn't reached the bar
   yet, closest first. Each shows how close it is, who Downvoted it and how much each counts, with
   "not tried yet" for anyone who hasn't watched it. **Keep now** clears its Downvotes; **Remove now**

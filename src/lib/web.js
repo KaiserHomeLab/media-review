@@ -29,6 +29,7 @@ const { eggFor, welcomed } = require('./eggs');
 const { rest: discordRest } = require('./discord');
 const { LINK_MINUTES } = require('./bot');
 const { posterOk } = require('./notices');
+const { appearance, renderPage, LOGO_MAX } = require('./appearance');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -47,12 +48,15 @@ const TYPES = /** @type {Record<string, string>} */ ({
 });
 
 // A small JSON request body (settings and setup forms). Anything else reads as {}.
-/** @param {import('node:http').IncomingMessage} req @returns {Promise<Record<string, unknown>>} */
-async function readJson(req) {
+/**
+ * @param {import('node:http').IncomingMessage} req @param {number} [max] bytes; a logo upload needs more
+ * @returns {Promise<Record<string, unknown>>}
+ */
+async function readJson(req, max = 64 * 1024) {
   let body = '';
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > 64 * 1024) throw Object.assign(new Error('request too large'), { status: 413 });
+    if (body.length > max) throw Object.assign(new Error('request too large'), { status: 413 });
   }
   try {
     const v = JSON.parse(body || '{}');
@@ -280,6 +284,9 @@ function createApp({
     }
   }
 
+  // Settings → Appearance: written into every page as it's sent.
+  const look = appearance(store);
+
   /** @type {Map<string, { at: number, bot: { id: string, username: string }, guilds: Array<{ id: string, name: string }> }>} */
   const discordSeen = new Map();
 
@@ -448,6 +455,34 @@ function createApp({
     return json(res, 200, { saved: true, queued: queued.length, rules: toForm(settings) });
   }
 
+  // ------------------------------------------------------------------ Settings → Appearance
+  /** @param {Req} req @param {Res} res @param {string | undefined} m @param {string} p */
+  async function appearanceRoute(req, res, m, p) {
+    try {
+      if (p === '/api/owner/appearance') {
+        if (m === 'GET') return json(res, 200, look.forForm());
+        if (m !== 'PUT') return json(res, 404, { error: 'not found' });
+        look.save(await readJson(req));
+        log('settings: appearance saved');
+        return json(res, 200, look.forForm());
+      }
+      if (m === 'DELETE') {
+        look.removeLogo();
+        log('settings: logo removed');
+        return json(res, 200, look.forForm());
+      }
+      if (m !== 'POST') return json(res, 404, { error: 'not found' });
+      // Base64 is a third bigger than the image.
+      look.setLogo((await readJson(req, Math.ceil(LOGO_MAX * 1.4) + 1024)).data);
+      log('settings: logo uploaded');
+      return json(res, 200, look.forForm());
+    } catch (e) {
+      return json(res, e.status === 413 ? 413 : 400, {
+        error: e.status === 413 ? 'The logo must be 256 KB or smaller' : e.message,
+      });
+    }
+  }
+
   // ------------------------------------------------------------------ routes
   /** @param {Req} req @param {Res} res @param {URL} url */
   async function route(req, res, url) {
@@ -463,6 +498,18 @@ function createApp({
       if (m !== 'GET' && !String(req.headers['content-type']).startsWith('application/json'))
         return json(res, 415, { error: 'send JSON' });
       return setupRoute(req, res, m, p);
+    }
+    // The Owner's logo (Settings → Appearance), for every page, signed in or not. The hash in the link
+    // changes with the image, so it can be kept for long.
+    if (m === 'GET' && p === '/branding/logo') {
+      const logo = look.read().logo;
+      if (!logo) return json(res, 404, { error: 'no logo' });
+      res.writeHead(200, {
+        'Content-Type': logo.type,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      return res.end(Buffer.from(logo.data, 'base64'));
     }
     // A poster for a Discord announcement: Discord fetches it without signing in, so only by a signed link.
     const cover = p.match(/^\/cover\/([^/]+)\/([\w-]{22})$/);
@@ -668,6 +715,7 @@ function createApp({
         heldBackDecisions(req, res, m, p.slice('/api/owner'.length), 'Media Review');
       if (handled) return handled;
       if (p === '/api/owner/rules') return rulesRoute(req, res, m);
+      if (p === '/api/owner/appearance' || p === '/api/owner/appearance/logo') return appearanceRoute(req, res, m, p);
       if (p === '/api/owner/settings' || p.startsWith('/api/owner/settings/'))
         return settingsRoute(req, res, m, p.slice('/api/owner/settings'.length));
     }
@@ -848,6 +896,8 @@ function createApp({
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'",
     });
+    // Pages carry the Owner's appearance; everything else goes as it is.
+    if (path.extname(file) === '.html') return res.end(renderPage(fs.readFileSync(file, 'utf8'), look.read()));
     fs.createReadStream(file).pipe(res);
   }
 
