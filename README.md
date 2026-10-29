@@ -13,7 +13,7 @@ It works on its own. If you also run [Media Ops](https://github.com/KaiserHomeLa
 
 Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, next to Plex and Tautulli. Everything else is set up in its web app.
 
-1. Save [`unraid-template.xml`](unraid-template.xml) as `/boot/config/plugins/dockerMan/templates-user/my-media-review.xml`, then go to **Docker → Add Container → Template: media-review**.
+1. Save [`unraid-template.xml`](unraid-template.xml) (it carries the icon Unraid shows) as `/boot/config/plugins/dockerMan/templates-user/my-media-review.xml`, then go to **Docker → Add Container → Template: media-review**.
 2. Set **Network Type** to the custom network Plex, Tautulli, Radarr and Sonarr are on, so Media Review can reach them by container name (`http://plex:32400`, `http://tautulli:8181`…).
 3. Keep **Appdata** on the cache pool. SQLite is unreliable through `/mnt/user`'s FUSE layer unless appdata is an exclusive share, so use `/mnt/cache/appdata/media-review` if it isn't.
 4. Apply, and open the container's log (**Docker → media-review → Logs**). It shows a one-time **setup code**; a new one is made at each start until setup is done.

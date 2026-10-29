@@ -59,6 +59,8 @@ number, a fix the last one.
 
 ### Fixed
 
+- Unraid's Docker page shows Media Review's icon. The template and the image now name it. On an
+  existing install, save the template again (the `wget` from the install steps) and Apply.
 - Discord in Settings no longer fails with "Discord answered HTTP 429: You are being rate limited".
   Test asked Discord for the bot's servers twice at once. It now asks once, and remembers the
   answer for a minute. A short rate limit is waited out, and a long one says how long to wait. The

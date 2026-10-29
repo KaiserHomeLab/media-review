@@ -16,6 +16,7 @@
   <Category>MediaServer:Other Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:8485]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/KaiserHomeLab/media-review/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/KaiserHomeLab/media-review/main/src/public/icon.png</Icon>
   <ExtraParams>--log-opt max-size=10m --log-opt max-file=3</ExtraParams>
   <Config Name="WebUI" Target="8485" Default="8485" Mode="tcp" Description="Web app and API port (Media Ops uses 8484)" Type="Port" Display="always" Required="true" Mask="false">8485</Config>
   <Config Name="Appdata" Target="/config" Default="/mnt/user/appdata/media-review" Mode="rw" Description="The database: every Downvote, decision and setting. Keep it on the cache pool (an exclusive appdata share, or /mnt/cache/appdata/media-review): SQLite is unreliable through /mnt/user's FUSE layer otherwise." Type="Path" Display="advanced-hide" Required="true" Mask="false">/mnt/user/appdata/media-review</Config>

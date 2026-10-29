@@ -19,6 +19,8 @@ LABEL org.opencontainers.image.description="Downvotes and a Review Queue for a P
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/KaiserHomeLab/media-review"
 LABEL org.opencontainers.image.url="https://github.com/KaiserHomeLab/media-review"
+# Unraid shows this icon for the container (the template's <Icon> says the same)
+LABEL net.unraid.docker.icon="https://raw.githubusercontent.com/KaiserHomeLab/media-review/main/src/public/icon.png"
 
 # environment settings: the database lives in /config, the one volume
 ENV DATA_DIR="/config" \
