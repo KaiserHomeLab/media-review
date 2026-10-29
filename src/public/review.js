@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// The Owner's page: the Review Queue and Leaving Soon, with their decisions. Settings has its own page.
+// The Owner's page: the Review Queue, Problem Reports and Leaving Soon, with their decisions. Settings has its own page.
 // The same decisions can be made in Media Ops; both go to the same place (ADR 0003).
 'use strict';
 
@@ -160,6 +160,64 @@ function leavingEntry(l) {
   return li;
 }
 
+// One open Problem Report: what's wrong, everyone who has it, and Resolve or Close with an optional note.
+function problemEntry(r) {
+  const li = el('li', 'entry');
+  const img = el(r.title.poster ? 'img' : 'div', 'poster');
+  if (r.title.poster) Object.assign(img, { src: `/poster/${encodeURIComponent(r.title.ratingKey)}`, alt: '' });
+  const main = el('div', 'main');
+  const head = el('div', 'head');
+  head.append(el('b', '', r.title.name ?? r.title.ratingKey));
+  if (r.title.year) head.append(el('span', 'muted', ` (${r.title.year})`));
+  const chips = el('div', 'meta');
+  chips.append(el('span', 'chip', r.title.library ?? (r.title.kind === 'show' ? 'Show' : 'Movie')));
+  chips.append(el('span', 'chip review', r.reasonLabel));
+  if (r.part) chips.append(el('span', 'chip', r.part));
+  else if (r.title.kind === 'show') chips.append(el('span', 'chip', 'Whole show'));
+  main.append(head, chips);
+  for (const p of r.reporters)
+    main.append(el('div', 'line', `${p.voter} · ${ago(p.at)}${p.note ? `: “${p.note}”` : ''}`));
+  const note = Object.assign(el('input', 'note-in'), {
+    placeholder: 'Note for them (optional), e.g. replaced with a 1080p copy',
+    maxLength: 500,
+  });
+  main.append(note);
+
+  const acts = el('div', 'acts');
+  for (const [what, label, cls, tip] of [
+    ['resolve', 'Resolve', 'btn small', "Fixed: they're told it's resolved"],
+    ['close', 'Close', 'btn small ghost', "Not fixing it: they're told it's closed"],
+  ]) {
+    const b = el('button', cls, label);
+    b.type = 'button';
+    b.title = tip;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      fail('');
+      try {
+        await api(`/api/owner/problem-reports/${r.id}/${what}`, {
+          method: 'POST',
+          body: JSON.stringify({ note: note.value }),
+        });
+      } catch (err) {
+        // Already dealt with, perhaps in Media Ops: the reload shows where it stands.
+        if (err.message !== 'not-open') fail(err.message);
+      }
+      loadAll();
+    });
+    acts.append(b);
+  }
+  li.append(img, main, acts);
+  return li;
+}
+
+async function loadProblems() {
+  const { problemReports } = await api('/api/owner/problem-reports');
+  $('problems-count').textContent = problemReports.length ? `${problemReports.length} open` : 'none open';
+  $('problems').replaceChildren(...problemReports.map(problemEntry));
+  if (!problemReports.length) $('problems').append(el('li', 'empty', 'No open Problem Reports.'));
+}
+
 async function loadLeaving() {
   const { leavingSoon } = await api('/api/owner/leaving-soon');
   $('leaving-count').textContent = leavingSoon.length ? `${leavingSoon.length} leaving` : 'nothing leaving';
@@ -172,6 +230,7 @@ let leavingDays = 14;
 const loadAll = () =>
   Promise.all([
     loadQueue(),
+    loadProblems(),
     loadLeaving(),
     api('/api/owner/rules')
       .then(r => (leavingDays = r.rules.leavingSoonDays))
@@ -188,6 +247,7 @@ async function loadQueue() {
 loadAll()
   .then(() => {
     $('queue-card').hidden = false;
+    $('problems-card').hidden = false;
     $('leaving-card').hidden = false;
   })
   .catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));

@@ -94,3 +94,33 @@ test('a database made before Titles had a library gets the column, and keeps its
   assert.equal(store.title('1')?.library, 'Movies');
   store.close();
 });
+
+test("a show's episodes come from allLeaves, in order, with Specials as season 0", async () => {
+  const p = plex({
+    url: 'http://plex:32400',
+    token: 't',
+    clientId: 'c',
+    fetch: /** @type {typeof fetch} */ (
+      async url => {
+        assert.equal(new URL(String(url)).pathname, '/library/metadata/20/allLeaves');
+        return new Response(
+          JSON.stringify({
+            MediaContainer: {
+              Metadata: [
+                { parentIndex: 2, index: 1, title: 'Back' },
+                { parentIndex: 1, index: 2, title: 'Two' },
+                { parentIndex: 0, index: 1, title: 'Special' },
+                { index: 9, title: 'No season' },
+              ],
+            },
+          }),
+        );
+      }
+    ),
+  });
+  assert.deepEqual(await p.episodes('20'), [
+    { season: 0, episode: 1, title: 'Special' },
+    { season: 1, episode: 2, title: 'Two' },
+    { season: 2, episode: 1, title: 'Back' },
+  ]);
+});

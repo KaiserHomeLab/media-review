@@ -59,7 +59,7 @@ The set of titles whose downvotes have crossed the threshold and now wait for th
 _Avoid_: Delete list, kill list
 
 **Problem Report**:
-One user's report that a specific copy of a Title is broken or poor quality, asking for it to be replaced. A Problem Report never counts as a Downvote. It waits for the Owner, and the reporter is told when it is resolved or closed.
+One user's report that a specific copy of a Title is broken or poor quality, asking for it to be replaced. It is about the whole Title or, for a show, one season or episode, and says what is wrong. Someone else with the same problem joins the open report instead of filing another, and everyone on it is told the outcome. A Problem Report never counts as a Downvote. It waits for the Owner, who resolves it (fixed) or closes it (not fixing it), with an optional note to the reporters.
 _Avoid_: File vote, bad-file downvote, complaint
 
 **Keep**:

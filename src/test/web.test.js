@@ -29,6 +29,10 @@ const fakePlex = /** @type {any} */ ({
   pinToken: async (/** @type {number} */ id) => (ACCOUNTS[id] ? `token-${id}` : null),
   account: async (/** @type {string} */ token) => ({ ...ACCOUNTS[Number(token.slice(6))], thumb: null }),
   poster: async () => new Response('img', { headers: { 'content-type': 'image/jpeg' } }),
+  episodes: async () => [
+    { season: 1, episode: 1, title: 'Pilot' },
+    { season: 1, episode: 2, title: 'Two' },
+  ],
 });
 
 /** @param {{ publicUrl?: string, leavingChanged?: () => void }} [extra] */
@@ -457,4 +461,77 @@ test('Objections from the web app: refused for downvoters, shown to the Owner, a
   assert.deepEqual(await (await post(dave, '/api/titles/m1/object')).json(), { error: 'objections-closed' });
   const again = (await (await req('/api/titles', { cookie: dave })).json()).titles[0];
   assert.equal(again.objectionsOpen, false);
+});
+
+test('Problem Reports from the web app: a Voter sees only their own, the Owner and Media Ops resolve or close', async () => {
+  const { store, req, signIn, post } = await setup();
+  store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie' },
+    { ratingKey: 's1', kind: 'show', title: 'Slow Show' },
+  ]);
+  const [owner, alice, bob] = await Promise.all([1, 2, 3].map(async pin => (await signIn(pin)).cookie));
+  /** @param {string} cookie @param {string} p @param {unknown} body */
+  const send = (cookie, p, body) =>
+    req(p, { method: 'POST', cookie, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  assert.deepEqual(await (await req('/api/titles/s1/episodes', { cookie: alice })).json(), {
+    seasons: [
+      {
+        season: 1,
+        episodes: [
+          { episode: 1, title: 'Pilot' },
+          { episode: 2, title: 'Two' },
+        ],
+      },
+    ],
+  });
+  const filed = await send(alice, '/api/titles/s1/problems', {
+    season: 1,
+    episode: 2,
+    reason: 'audio',
+    note: 'no sound',
+  });
+  assert.equal(filed.status, 201);
+  const { id } = await filed.json();
+  assert.equal((await send(alice, '/api/titles/s1/problems', { season: 1, episode: 2, reason: 'audio' })).status, 409);
+  assert.equal((await send(alice, '/api/titles/s1/problems', { season: 4, reason: 'audio' })).status, 400);
+  assert.equal((await send(owner, '/api/titles/m1/problems', { reason: 'audio' })).status, 403);
+
+  // bob sees there's one open, not whose, and says me too.
+  const open = (await (await req('/api/titles/s1/problems', { cookie: bob })).json()).problemReports;
+  assert.deepEqual([open[0].id, open[0].part, open[0].mine], [id, 'S1 E2 · Two', false]);
+  assert.doesNotMatch(JSON.stringify(open), /alice|no sound/);
+  assert.deepEqual(await (await send(bob, `/api/problems/${id}/me-too`, { note: 'same' })).json(), { ok: true });
+  assert.deepEqual(
+    (await (await req('/api/problems', { cookie: bob })).json()).problemReports.map((/** @type {any} */ r) => r.note),
+    ['same'],
+  );
+  assert.equal(store.downvotesOf('s1').length, 0, 'never a Downvote');
+
+  // Media Ops sees who has it, and resolves it with a note.
+  const { apiKey } = await (await post(owner, '/api/owner/api-key')).json();
+  const key = { 'x-api-key': apiKey, 'content-type': 'application/json' };
+  assert.equal((await req('/api/v1/problem-reports')).status, 401);
+  const [forOps] = (await (await req('/api/v1/problem-reports', { headers: key })).json()).problemReports;
+  assert.deepEqual(
+    forOps.reporters.map((/** @type {any} */ r) => [r.voter, r.note]),
+    [
+      ['alice', 'no sound'],
+      ['bob', 'same'],
+    ],
+  );
+  assert.equal((await post(alice, `/api/owner/problem-reports/${id}/resolve`)).status, 403);
+  const resolve = () =>
+    req(`/api/v1/problem-reports/${id}/resolve`, { method: 'POST', headers: key, body: '{"note":"Replaced"}' });
+  assert.deepEqual(await (await resolve()).json(), { resolved: true });
+  assert.deepEqual(await (await resolve()).json(), { error: 'not-open' });
+  assert.deepEqual((await (await req('/api/owner/problem-reports', { cookie: owner })).json()).problemReports, []);
+  const [mine] = (await (await req('/api/problems', { cookie: alice })).json()).problemReports;
+  assert.deepEqual([mine.outcome, mine.ownerNote], ['resolved', 'Replaced']);
+
+  // And closing, from the Owner's own page.
+  const two = await (await send(bob, '/api/titles/m1/problems', { reason: 'other', note: 'wrong cut' })).json();
+  assert.deepEqual(await (await post(owner, `/api/owner/problem-reports/${two.id}/close`)).json(), { closed: true });
+  assert.equal((await (await req('/api/problems', { cookie: bob })).json()).problemReports[0].outcome, 'closed');
+  assert.equal((await (await req('/api/problems', { cookie: alice })).json()).problemReports.length, 1);
 });

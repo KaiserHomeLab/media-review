@@ -508,7 +508,8 @@ main.narrow {
   font-size: 12px;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   font: 14px var(--sans);
   color: var(--text-primary);
   background: var(--bg);
@@ -518,7 +519,8 @@ main.narrow {
   width: 100%;
 }
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
   outline-offset: 0;
   border-color: var(--accent);
@@ -798,4 +800,65 @@ code {
   border-radius: 8px;
   word-break: break-all;
   margin: 0 0 14px;
+}
+
+/* ------------------------------------------------------------------ Problem Reports */
+.field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+.pick[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+}
+.reasons {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+.report-form {
+  display: grid;
+  gap: 14px;
+}
+.parts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 520px) {
+  .parts {
+    grid-template-columns: 1fr;
+  }
+}
+.open-reports {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.open-reports li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.open-reports .what {
+  flex: 1;
+  min-width: 160px;
+}
+.chip.good {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+}
+.note-in {
+  font: 13px var(--sans);
+  color: var(--text-primary);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  width: 100%;
 }

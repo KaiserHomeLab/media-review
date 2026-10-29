@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 KaiserHomeLab
 //
-// The Voter's page: browse Titles and cast Downvotes. A Voter only ever sees their own Downvotes.
+// The Voter's page: browse Titles, cast Downvotes and file Problem Reports. A Voter only ever sees their own.
 'use strict';
 
 const $ = id => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -21,6 +21,12 @@ const ERRORS = {
   'objections-closed': 'This was sent back once already, so it takes no Objections this time.',
   'already-objected': 'You already objected to this.',
   'not-leaving': 'This is no longer Leaving Soon.',
+  'pick-a-reason': "Pick what's wrong.",
+  'say-what': 'Say what the problem is.',
+  'unknown-part': "That season or episode isn't in Plex.",
+  'already-reported': "You've already reported this problem.",
+  'not-open': 'The Owner has already dealt with that report.',
+  'not-reported': "You weren't on that report.",
 };
 
 async function api(path, opts = {}) {
@@ -140,9 +146,215 @@ function card(t) {
     acts.append(action('downvote'));
     if (untried) acts.append(tryNote());
   }
+  // Anyone but the Owner can report a broken or poor copy, whatever else is going on with the Title.
+  if (!me.isOwner) {
+    const report = el('button', 'btn small ghost', '⚑ Report a problem');
+    report.type = 'button';
+    report.addEventListener('click', () => openReport(t).catch(e => showError(e.message)));
+    acts.append(report);
+  }
   body.append(acts);
   li.append(img, body);
   return li;
+}
+
+// ------------------------------------------------------------------ Problem Reports
+const modal = /** @type {HTMLDialogElement} */ ($('modal'));
+$('modal-close').addEventListener('click', () => modal.close());
+
+const REASONS = [
+  ['wont-play', "Won't play"],
+  ['video', 'Video'],
+  ['audio', 'Audio'],
+  ['subtitles', 'Subtitles'],
+  ['wrong', 'Wrong title or language'],
+  ['quality', 'Poor quality'],
+  ['other', 'Other'],
+];
+const OUTCOME = { resolved: 'Resolved', closed: 'Closed' };
+
+/** @param {string} label @param {HTMLElement} input @param {string} [help] */
+function field(label, input, help) {
+  const f = el('label', 'field');
+  f.append(el('span', '', label), input);
+  if (help) f.append(el('small', '', help));
+  return f;
+}
+
+const option = (/** @type {string} */ value, /** @type {string} */ text) =>
+  Object.assign(document.createElement('option'), { value, textContent: text });
+const seasonName = (/** @type {number} */ n) => (n === 0 ? 'Specials' : `Season ${n}`);
+
+// The dialog for one Title: the open reports on it (say "me too", or take yours back), then a new one.
+async function openReport(t) {
+  const [{ problemReports: open }, { seasons }] = await Promise.all([
+    api(`/api/titles/${encodeURIComponent(t.ratingKey)}/problems`),
+    t.kind === 'show' ? api(`/api/titles/${encodeURIComponent(t.ratingKey)}/episodes`) : { seasons: [] },
+  ]);
+  const err = el('p', 'notice error');
+  err.hidden = true;
+  const fail = (/** @type {string} */ code) => {
+    err.textContent = ERRORS[code] ?? code;
+    err.hidden = false;
+  };
+  const done = (/** @type {string} */ msg) => {
+    modal.close();
+    showNotice(msg);
+    loadReports();
+  };
+  const body = [];
+
+  if (open.length) {
+    const list = el('ul', 'open-reports');
+    for (const r of open) {
+      const li = el('li', '');
+      const what = el('div', 'what');
+      what.append(el('b', '', r.reasonLabel), el('div', 'muted', r.part ?? (t.kind === 'show' ? 'Whole show' : '')));
+      const b = el('button', r.mine ? 'btn small ghost' : 'btn small', r.mine ? 'Withdraw' : 'Me too');
+      b.type = 'button';
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          await api(`/api/problems/${r.id}/${r.mine ? 'withdraw' : 'me-too'}`, { method: 'POST', body: '{}' });
+          done(r.mine ? 'Taken back.' : "Added you: you'll see here what the Owner does about it.");
+        } catch (e) {
+          fail(e.message);
+          b.disabled = false;
+        }
+      });
+      li.append(what);
+      if (r.mine) li.append(el('span', 'chip review', 'You reported this'));
+      li.append(b);
+      list.append(li);
+    }
+    body.push(el('div', 'pick-group', 'Already reported'), list, el('div', 'pick-group', 'Something else'));
+  }
+
+  const form = el('div', 'report-form');
+  // Which part: for a show, the whole show, a season, or one episode.
+  const season = /** @type {HTMLSelectElement} */ (el('select', ''));
+  const episode = /** @type {HTMLSelectElement} */ (el('select', ''));
+  if (t.kind === 'show' && seasons.length) {
+    season.append(option('', 'Whole show'), ...seasons.map(x => option(String(x.season), seasonName(x.season))));
+    const fillEpisodes = () => {
+      const s = seasons.find(x => String(x.season) === season.value);
+      episode.replaceChildren(
+        option('', s ? 'Every episode' : '—'),
+        ...(s?.episodes ?? []).map(e => option(String(e.episode), `E${e.episode}${e.title ? ` · ${e.title}` : ''}`)),
+      );
+      episode.disabled = !s;
+    };
+    season.addEventListener('change', fillEpisodes);
+    fillEpisodes();
+    const parts = el('div', 'parts');
+    parts.append(field('Season', season), field('Episode', episode));
+    form.append(parts);
+  }
+
+  let reason = '';
+  const reasons = el('div', 'pick-grid reasons');
+  const note = /** @type {HTMLTextAreaElement} */ (el('textarea', ''));
+  Object.assign(note, { maxLength: 500, rows: 3, placeholder: 'e.g. stops at 20 minutes, no sound after the intro' });
+  const noteField = field('What happens?', note, 'Optional');
+  for (const [id, label] of REASONS) {
+    const b = el('button', 'pick', label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => {
+      reason = id;
+      for (const x of reasons.children) x.setAttribute('aria-pressed', String(x === b));
+      /** @type {HTMLElement} */ (noteField.querySelector('small')).textContent =
+        id === 'other' ? 'Needed for Other' : 'Optional';
+    });
+    reasons.append(b);
+  }
+  const reasonField = el('div', 'field');
+  reasonField.append(el('span', '', "What's wrong?"), reasons);
+
+  const send = el('button', 'btn primary', 'Send to the Owner');
+  send.type = 'button';
+  send.addEventListener('click', async () => {
+    if (!reason) return fail('pick-a-reason');
+    if (reason === 'other' && !note.value.trim()) return fail('say-what');
+    send.disabled = true;
+    try {
+      const r = await api(`/api/titles/${encodeURIComponent(t.ratingKey)}/problems`, {
+        method: 'POST',
+        body: JSON.stringify({
+          season: season.value || null,
+          episode: episode.value || null,
+          reason,
+          note: note.value,
+        }),
+      });
+      done(
+        r.joined
+          ? 'Someone already reported that: added you to it.'
+          : "Sent. You'll see here when the Owner resolves or closes it.",
+      );
+    } catch (e) {
+      fail(e.message);
+      send.disabled = false;
+    }
+  });
+  const actions = el('div', 'actions');
+  actions.append(el('span', 'muted', 'This never counts as a Downvote.'), el('span', 'spacer'), send);
+  form.append(reasonField, noteField, err, actions);
+  body.push(form);
+
+  $('modal-title').textContent = `Report a problem: ${t.title}`;
+  $('modal-body').replaceChildren(...body);
+  if (!modal.open) modal.showModal();
+}
+
+/** @param {string} iso */
+const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
+// The Voter's own reports: open ones, and what the Owner did with the rest (for 30 days).
+async function loadReports() {
+  const { problemReports } = await api('/api/problems');
+  $('reports-card').hidden = !problemReports.length;
+  const open = problemReports.filter(r => !r.outcome).length;
+  $('reports-count').textContent = open ? `${open} open` : 'all dealt with';
+  $('reports').replaceChildren(
+    ...problemReports.map(r => {
+      const li = el('li', 'entry');
+      const main = el('div', 'main');
+      const head = el('div', 'head');
+      head.append(el('b', '', r.title.name ?? 'A title no longer in the library'));
+      const chips = el('div', 'meta');
+      chips.append(el('span', 'chip', r.reasonLabel));
+      if (r.part) chips.append(el('span', 'chip', r.part));
+      chips.append(
+        r.outcome
+          ? el(
+              'span',
+              r.outcome === 'resolved' ? 'chip good' : 'chip',
+              `${OUTCOME[r.outcome]} ${shortDate(r.decidedAt)}`,
+            )
+          : el('span', 'chip review', 'Waiting for the Owner'),
+      );
+      main.append(head, chips);
+      if (r.ownerNote) main.append(el('div', 'line', `Owner: ${r.ownerNote}`));
+      else if (r.note) main.append(el('div', 'line muted', `You said: ${r.note}`));
+      li.append(main);
+      if (!r.outcome) {
+        const b = el('button', 'btn small ghost', 'Withdraw');
+        b.type = 'button';
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          await api(`/api/problems/${r.id}/withdraw`, { method: 'POST', body: '{}' }).catch(e =>
+            showError(ERRORS[e.message] ?? e.message),
+          );
+          loadReports();
+        });
+        const acts = el('div', 'acts');
+        acts.append(b);
+        li.append(acts);
+      }
+      return li;
+    }),
+  );
 }
 
 // The library tab ('' is All), remembered in this browser only.
@@ -242,6 +454,7 @@ async function start() {
       load();
     }, 200);
   });
+  if (!me.isOwner) loadReports().catch(e => showError(e.message));
   await loadTabs().catch(e => showError(e.message));
   load();
 }
