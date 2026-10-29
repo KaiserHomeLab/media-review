@@ -35,8 +35,12 @@ Friends can Downvote, withdraw, object and report from Discord with slash comman
 
 1. Go to <https://discord.com/developers/applications>, press **New Application** and name it (for example Media Review).
 2. Under **Bot**, press **Reset Token** and copy the token. No privileged intents are needed.
-3. Under **OAuth2 → URL Generator**, tick `bot` and `applications.commands`, then open the link it makes and add the bot to your server.
-4. In Media Review, go to **Settings → + Add app → Discord**. Paste the token, press **Test**, pick your server and **Save**.
+3. Under **OAuth2 → URL Generator**, tick `bot` and `applications.commands`, and under Bot Permissions tick **Send Messages** and **Embed Links**. Then open the link it makes and add the bot to your server.
+4. In Media Review, go to **Settings → + Add app → Discord**. Paste the token, press **Test**, pick your server, then pick the two channels, and **Save**:
+   - **Announcements**, which everyone sees: Leaving Soon (a card with the poster), the last-day reminder, staying after all or sent back, brought back, and fixed problems. These never name anyone.
+   - **Your channel**, which only you should be able to see: Titles entering the Review Queue (with who Downvoted), send-backs, new Problem Reports, asks to bring back, deletions that failed, and apps unreachable for an hour.
+
+   A friend whose Problem Report is resolved or closed is told in a direct message, if their Discord is linked. Only what happens after you set the channels is posted. Posters in announcements use the public address.
 
 The bot connects out to Discord, so commands work without a tunnel. The one-time link a friend gets to connect their account uses the **public address** set in Settings.
 

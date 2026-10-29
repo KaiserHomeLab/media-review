@@ -72,6 +72,11 @@ CREATE TABLE IF NOT EXISTS title_votes (
   kind TEXT NOT NULL CHECK (kind IN ('downvote', 'objection')), vote_weight REAL
 );
 CREATE INDEX IF NOT EXISTS title_votes_title ON title_votes (title_key);
+CREATE TABLE IF NOT EXISTS notices (
+  id INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, target TEXT NOT NULL, message TEXT NOT NULL,
+  created_at INTEGER NOT NULL, sent_at INTEGER, error TEXT, tries INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS brought_back (title_key TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS discord_links (
   discord_id TEXT PRIMARY KEY, plex_id TEXT NOT NULL UNIQUE, discord_name TEXT, linked_at INTEGER NOT NULL
 );
@@ -574,6 +579,7 @@ function openStore(file) {
     release: (titleKey, note, now) =>
       tx(() => {
         db.prepare('DELETE FROM held_back WHERE title_key = ?').run(titleKey);
+        db.prepare('INSERT INTO brought_back (title_key, at) VALUES (?, ?)').run(titleKey, now);
         db.prepare(
           `UPDATE bring_back_asks SET outcome = 'brought-back', owner_note = ?, decided_at = ?
            WHERE title_key = ? AND outcome IS NULL`,
@@ -647,6 +653,58 @@ function openStore(file) {
           )
           .all(titleKey)
       ),
+
+    // Notices: each Discord message once, by a key naming its event. Recorded first, sent after, so a run
+    // that happens twice records nothing new, and Discord being down holds nothing up.
+    /** @param {string} key @param {string} target @param {unknown} message @param {number} now @returns {boolean} false if known */
+    addNotice: (key, target, message, now) =>
+      db
+        .prepare(
+          'INSERT INTO notices (key, target, message, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (key) DO NOTHING',
+        )
+        .run(key, target, JSON.stringify(message), now).changes === 1,
+    /** @param {string} key */
+    hasNotice: key => !!db.prepare('SELECT 1 FROM notices WHERE key = ?').get(key),
+    /** @returns {Array<{ id: number, key: string, target: string, message: string, tries: number, error: string | null }>} oldest first */
+    unsentNotices: () =>
+      /** @type {any} */ (db.prepare('SELECT * FROM notices WHERE sent_at IS NULL ORDER BY id').all()),
+    /** @param {number} id @param {number} now */
+    noticeSent: (id, now) => void db.prepare('UPDATE notices SET sent_at = ?, error = NULL WHERE id = ?').run(now, id),
+    /** @param {number} id @param {string} error */
+    noticeFailed: (id, error) =>
+      void db.prepare('UPDATE notices SET error = ?, tries = tries + 1 WHERE id = ?').run(error, id),
+    // What happened since `since`, for the notices: decisions, Problem Reports, asks and bring-backs.
+    /** @param {number} since @returns {Array<{ title_key: string, decision: 'keep' | 'remove', at: number, before: string | null }>} */
+    decisionsSince: since =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT d.title_key, d.decision, d.at, (SELECT p.decision FROM decisions p WHERE p.title_key = d.title_key
+               AND (p.at < d.at OR (p.at = d.at AND p.id < d.id)) ORDER BY p.at DESC, p.id DESC LIMIT 1) AS before
+             FROM decisions d WHERE d.at >= ? ORDER BY d.at, d.id`,
+          )
+          .all(since)
+      ),
+    /** @param {number} since @returns {ProblemRow[]} filed or decided since */
+    problemsSince: since =>
+      /** @type {any} */ (
+        db
+          .prepare('SELECT * FROM problem_reports WHERE created_at >= ? OR decided_at >= ? ORDER BY id')
+          .all(since, since)
+      ),
+    /** @param {number} since @returns {Array<{ id: number, title_key: string, voter_id: string, username: string | null, note: string | null, created_at: number }>} */
+    asksSince: since =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT a.id, a.title_key, a.voter_id, v.username, a.note, a.created_at FROM bring_back_asks a
+             LEFT JOIN voters v ON v.plex_id = a.voter_id WHERE a.created_at >= ? ORDER BY a.id`,
+          )
+          .all(since)
+      ),
+    /** @param {number} since @returns {Array<{ title_key: string, at: number }>} */
+    broughtBackSince: since =>
+      /** @type {any} */ (db.prepare('SELECT * FROM brought_back WHERE at >= ? ORDER BY at').all(since)),
 
     // Discord: one Discord account per Plex account, linked from a one-time link the bot hands out.
     /** @param {string} discordId @returns {{ plex_id: string, discord_name: string | null } | undefined} */

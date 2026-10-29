@@ -16,7 +16,9 @@ const { ruleSettings } = require('./lib/rule-settings');
 const { sync } = require('./lib/sync');
 const { createApp } = require('./lib/web');
 const { syncLeavingSoon } = require('./lib/collections');
-const { appSettings, arrsFrom, seerrFrom } = require('./lib/apps');
+const { APPS, appSettings, arrsFrom, seerrFrom, probe } = require('./lib/apps');
+const { rest: discordRest } = require('./lib/discord');
+const notices = require('./lib/notices');
 const { holdBack } = require('./lib/holdback');
 const { runDeletions } = require('./lib/deletions');
 const { botRunner } = require('./lib/bot');
@@ -102,6 +104,63 @@ const updateCollections = () => {
 };
 
 // The Discord bot, when it's set up under Settings.
+// Which apps answer, checked after each sync: an hour without one is worth telling the Owner.
+const healthy = notices.health();
+const checkApps = async () => {
+  const all = apps.read();
+  const t = now();
+  /** @type {Array<[string, () => Promise<unknown>]>} */
+  const checks = [['Plex', () => plex.machineId()]];
+  for (const id of /** @type {import('./lib/apps').AppId[]} */ (Object.keys(APPS))) {
+    const cfg = all[id];
+    if (cfg) checks.push([APPS[id].label, () => probe(id, cfg)]);
+  }
+  healthy.only(checks.map(c => c[0]));
+  await Promise.all(
+    checks.map(async ([name, fn]) => {
+      try {
+        await fn();
+        healthy.ok(name);
+      } catch (e) {
+        healthy.fail(name, e.message, t);
+      }
+    }),
+  );
+};
+
+// Discord announcements and the Owner's messages: what happened is recorded once, then sent; every minute.
+/** @type {string | null} */
+let postError = null;
+let noticing = false;
+const runNotices = async () => {
+  const d = apps.read().discord;
+  if (noticing || !d || !(d.announceChannel || d.ownerChannel)) return;
+  noticing = true;
+  try {
+    notices.collect({
+      store,
+      now: now(),
+      since: d.noticesFrom ?? now(),
+      announce: !!d.announceChannel,
+      owner: !!d.ownerChannel,
+      publicUrl: (apps.read().publicUrl ?? '').replace(/\/+$/, '') || null,
+      tz: process.env.TZ || undefined,
+      health: healthy,
+    });
+    const r = await notices.deliver({
+      store,
+      api: discordRest({ token: d.token }),
+      channels: { announce: d.announceChannel, owner: d.ownerChannel },
+      now: now(),
+      log,
+    });
+    postError = r.error;
+  } finally {
+    noticing = false;
+  }
+};
+setInterval(() => runNotices().catch(e => log(`Discord notices failed: ${e.message}`)), 60000);
+
 const bot = botRunner({
   store,
   settings,
@@ -124,7 +183,10 @@ const app = createApp({
   publicDir: path.join(__dirname, 'public'),
   leavingChanged: () => void updateCollections(),
   seerr: () => seerrFrom(apps),
-  discordStatus: () => bot.status(),
+  discordStatus: () => {
+    const s = bot.status();
+    return s && { ...s, postError };
+  },
   apps,
   rules,
   setupCode: () => setupCode,
@@ -152,6 +214,8 @@ const runSync = async () => {
     await runDeletions({ store, arrs: arrsFrom(apps), settings, now, log });
     await holdBack({ store, seerr: seerrFrom(apps), log });
     await updateCollections();
+    await checkApps();
+    await runNotices().catch(e => log(`Discord notices failed: ${e.message}`));
   } finally {
     running = false;
   }
