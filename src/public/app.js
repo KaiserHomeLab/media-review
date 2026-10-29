@@ -425,6 +425,28 @@ async function loadAsks() {
   );
 }
 
+// ------------------------------------------------------------------ Discord
+// Whether this account's Discord is connected, and Disconnect. Connecting starts in Discord, with /link.
+async function loadDiscord() {
+  const d = await api('/api/discord');
+  $('discord-line').hidden = !d.enabled;
+  if (!d.enabled) return;
+  const text = d.linked
+    ? `Discord: connected as ${d.linked.name ?? 'you'}.`
+    : `Discord: not connected. In ${d.guildName ?? 'the Discord server'}, use /link.`;
+  const parts = [el('span', '', text)];
+  if (d.linked) {
+    const b = el('button', 'linkish', 'Disconnect');
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      await api('/api/discord/unlink', { method: 'POST', body: '{}' }).catch(e => showError(e.message));
+      loadDiscord();
+    });
+    parts.push(document.createTextNode(' '), b);
+  }
+  $('discord-line').replaceChildren(...parts);
+}
+
 /** @param {string} iso */
 const shortDate = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
@@ -576,6 +598,10 @@ async function start() {
     }
     return;
   }
+  // Came here to connect Discord and had to sign in first: back to it.
+  try {
+    if (sessionStorage.getItem('media-review:discord-link')) return location.replace('/link.html');
+  } catch {}
   $('who').textContent = me.isOwner ? `${me.username} · Owner` : me.username;
   $('logout').hidden = false;
   $('owner-link').hidden = !me.isOwner;
@@ -599,6 +625,7 @@ async function start() {
   });
   if (!me.isOwner) loadReports().catch(e => showError(e.message));
   if (!me.isOwner) loadAsks().catch(e => showError(e.message));
+  loadDiscord().catch(() => {});
   await loadTabs().catch(e => showError(e.message));
   load();
 }

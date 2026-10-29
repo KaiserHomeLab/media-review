@@ -8,6 +8,10 @@ number, a fix the last one.
 
 ### Added
 
+- Discord bot (optional): friends use `/downvote`, `/withdraw`, `/object`, `/report` and `/mine` in
+  your Discord server, with title autocomplete and replies only they can see. The first time, the
+  bot gives them a one-time link to connect their Discord to their Plex account. Set it up under
+  Settings → + Add app → Discord. Nothing to open up: the bot connects out to Discord.
 - Holding back deleted titles: with **Seerr** added under Settings, a title Media Review deletes goes
   on Seerr's blocklist, so it can't simply be requested and downloaded again. Friends find it under a
   **Gone** tab and can **Ask to bring it back**. You see who asked and why the title went (who
@@ -45,3 +49,8 @@ number, a fix the last one.
 - Settings → Rules: every rule, with a reason next to any value that isn't right. Anime gets its own
   Sample length, for the Plex libraries the Owner ticks as anime. Saving checks every Title again, so
   a lower bar can queue some at once; nothing already queued is taken out.
+
+### Fixed
+
+- The Owner's and Media Ops' routes no longer log "Cannot write headers after they are sent" on
+  every request. Each answered correctly, then also tried to answer "not found".

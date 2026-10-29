@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS title_votes (
   kind TEXT NOT NULL CHECK (kind IN ('downvote', 'objection')), vote_weight REAL
 );
 CREATE INDEX IF NOT EXISTS title_votes_title ON title_votes (title_key);
+CREATE TABLE IF NOT EXISTS discord_links (
+  discord_id TEXT PRIMARY KEY, plex_id TEXT NOT NULL UNIQUE, discord_name TEXT, linked_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS link_tokens (
+  token TEXT PRIMARY KEY, discord_id TEXT NOT NULL, discord_name TEXT, created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS problem_reporters (
   report_id INTEGER NOT NULL, voter_id TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL,
   PRIMARY KEY (report_id, voter_id)
@@ -640,6 +646,45 @@ function openStore(file) {
              LEFT JOIN voters v ON v.plex_id = t.voter_id WHERE t.title_key = ? ORDER BY t.at, t.vote_weight DESC`,
           )
           .all(titleKey)
+      ),
+
+    // Discord: one Discord account per Plex account, linked from a one-time link the bot hands out.
+    /** @param {string} discordId @returns {{ plex_id: string, discord_name: string | null } | undefined} */
+    linkOf: discordId =>
+      /** @type {any} */ (
+        db.prepare('SELECT plex_id, discord_name FROM discord_links WHERE discord_id = ?').get(discordId)
+      ),
+    /** @param {string} plexId @returns {{ discord_id: string, discord_name: string | null, linked_at: number } | undefined} */
+    linkFor: plexId =>
+      /** @type {any} */ (
+        db.prepare('SELECT discord_id, discord_name, linked_at FROM discord_links WHERE plex_id = ?').get(plexId)
+      ),
+    // Linking replaces whatever either account was linked to before.
+    /** @param {string} discordId @param {string} plexId @param {string | null} name @param {number} now */
+    link: (discordId, plexId, name, now) =>
+      tx(() => {
+        db.prepare('DELETE FROM discord_links WHERE discord_id = ? OR plex_id = ?').run(discordId, plexId);
+        db.prepare('INSERT INTO discord_links (discord_id, plex_id, discord_name, linked_at) VALUES (?, ?, ?, ?)').run(
+          discordId,
+          plexId,
+          name,
+          now,
+        );
+        db.prepare('DELETE FROM link_tokens WHERE discord_id = ?').run(discordId);
+      }),
+    /** @param {string} plexId @returns {boolean} false if it wasn't linked */
+    unlink: plexId => db.prepare('DELETE FROM discord_links WHERE plex_id = ?').run(plexId).changes === 1,
+    /** @param {string} token @param {string} discordId @param {string | null} name @param {number} now */
+    addLinkToken: (token, discordId, name, now) =>
+      void db
+        .prepare('INSERT INTO link_tokens (token, discord_id, discord_name, created_at) VALUES (?, ?, ?, ?)')
+        .run(token, discordId, name, now),
+    /** @param {string} token @param {number} notBefore @returns {{ discord_id: string, discord_name: string | null } | undefined} */
+    linkToken: (token, notBefore) =>
+      /** @type {any} */ (
+        db
+          .prepare('SELECT discord_id, discord_name FROM link_tokens WHERE token = ? AND created_at >= ?')
+          .get(token, notBefore)
       ),
 
     /** @param {string} token @param {string} plexId @param {boolean} isOwner @param {number} now */

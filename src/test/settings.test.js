@@ -31,8 +31,14 @@ const fakePlex = /** @type {any} */ ({
 
 // What answers at each address: Plex's /identity, by host.
 /** @type {typeof fetch} */
-const fakeFetch = async url => {
+const fakeFetch = async (url, init = {}) => {
   const u = new URL(String(url));
+  // Discord's API, for the bot token: the bot, and the servers it's in.
+  if (u.hostname === 'discord.com') {
+    if (/** @type {any} */ (init.headers)?.Authorization !== 'Bot good-token') return new Response('', { status: 401 });
+    if (u.pathname === '/api/v10/users/@me') return Response.json({ id: 'b1', username: 'Media Review' });
+    if (u.pathname === '/api/v10/users/@me/guilds') return Response.json([{ id: 'g1', name: 'Home Lab' }]);
+  }
   if (u.pathname !== '/identity') return new Response('', { status: 404 });
   if (u.hostname === 'plex') return new Response(JSON.stringify({ MediaContainer: { machineIdentifier: 'tower-id' } }));
   if (u.hostname === 'other') return new Response(JSON.stringify({ MediaContainer: { machineIdentifier: 'not-it' } }));
@@ -390,4 +396,40 @@ test('a library marked as anime uses the anime Sample length', async () => {
 
   const back = await s.body(await s.req('/api/owner/rules', { method: 'PUT', body: { animeLibraries: [] } }));
   assert.equal(back[1].queued, 1, 'as TV, all three Sampled it, and two Downvoted');
+});
+
+test("Discord in Settings: Test lists the bot's servers, Save needs one of them, and the token never comes back", async () => {
+  const s = await ownerSignedIn();
+  const test1 = await s.body(
+    await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: 'bad' } }),
+  );
+  assert.deepEqual(test1, [502, { error: 'Discord refused the bot token' }]);
+  const ok = await s.body(
+    await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: 'good-token' } }),
+  );
+  assert.deepEqual(ok, [200, { bot: 'Media Review', guilds: [{ id: 'g1', name: 'Home Lab' }] }]);
+  const wrong = await s.req('/api/owner/settings/discord', {
+    method: 'PUT',
+    body: { token: 'good-token', guildId: 'g9' },
+  });
+  assert.equal(wrong.status, 400);
+  const saved = await s.req('/api/owner/settings/discord', {
+    method: 'PUT',
+    body: { token: 'good-token', guildId: 'g1' },
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(s.apps.read().discord, {
+    token: 'good-token',
+    guildId: 'g1',
+    guildName: 'Home Lab',
+    botName: 'Media Review',
+  });
+  const page = await (await s.req('/api/owner/settings')).text();
+  assert.doesNotMatch(page, /good-token/);
+  assert.match(page, /"guildName":"Home Lab"/);
+  // a blank token keeps the saved one
+  const again = await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: '' } });
+  assert.equal(again.status, 200);
+  await s.req('/api/owner/settings/discord', { method: 'DELETE', body: {} });
+  assert.equal(s.apps.read().discord, undefined);
 });

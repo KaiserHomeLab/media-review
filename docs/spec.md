@@ -33,6 +33,12 @@ Terms are used exactly as defined in [CONTEXT.md](../CONTEXT.md). Where this spe
 - A Discord account is linked once to a Plex sign-in, from the web app.
 - Linked accounts can Downvote, make an Objection and file a Problem Report from Discord.
 - An unlinked Discord user who tries any of those gets a prompt with a link to connect their account in the web app. Nothing is recorded.
+- **Confirmed by the Owner (0009):**
+  - **Linking:** any command from an unlinked account replies with a one-time link, valid for 30 minutes, to `link.html`. There the person signs in with Plex if they need to and presses Connect. `/link` gives a fresh link. Linking again replaces the old link, on either side. The web app shows "connected as …" with Disconnect, and `/unlink` does the same.
+  - **Commands:** `/downvote`, `/withdraw` (a Downvote or an Objection), `/object`, `/report` (problem, optional part: whole show, a season or an episode, and an optional note), `/mine`, `/link` and `/unlink`. Titles autocomplete: `/object` offers only what's Leaving Soon, and `/withdraw` offers only the person's own Downvotes and Objections. The commands run through the same rules as the web app. The Owner can link, but the Owner doesn't Downvote, object or report.
+  - **Replies:** private to the person who used the command (ephemeral). A command that takes over about 2.5 seconds is answered "thinking…" first, then edited.
+  - **Connection:** the bot connects out to Discord's gateway, so no public address is needed for commands. The one-time link does use the public address. Commands are registered in, and answered in, only the server picked in Settings.
+  - **Setup:** Settings → + Add app → Discord. Paste the bot token, press Test to list the servers the bot is in, pick one and Save. The token is never sent back to the browser.
 - Announcements to the server channel: a Title entering Leaving Soon, and a resolved Problem Report (the reporter is told directly too).
 - Messages to the Owner: a Title entering the Review Queue, and an Objection sending a Title back to the Owner.
 

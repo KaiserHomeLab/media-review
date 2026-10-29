@@ -29,6 +29,19 @@ Media Review runs as a Docker container, `ghcr.io/kaiserhomelab/media-review`, n
 
 Logs are capped at 3 × 10 MB, the health check uses `/healthz`, and the container runs as PUID/PGID (99:100 by default, like other Unraid apps). Deletions run overnight, 04:00–07:00, in the container's time zone (`TZ`, which Unraid sets).
 
+## Discord (optional)
+
+Friends can Downvote, withdraw, object and report from Discord with slash commands. Every reply is private to them.
+
+1. Go to <https://discord.com/developers/applications>, press **New Application** and name it (for example Media Review).
+2. Under **Bot**, press **Reset Token** and copy the token. No privileged intents are needed.
+3. Under **OAuth2 → URL Generator**, tick `bot` and `applications.commands`, then open the link it makes and add the bot to your server.
+4. In Media Review, go to **Settings → + Add app → Discord**. Paste the token, press **Test**, pick your server and **Save**.
+
+The bot connects out to Discord, so commands work without a tunnel. The one-time link a friend gets to connect their account uses the **public address** set in Settings.
+
+Commands: `/downvote`, `/withdraw`, `/object`, `/report`, `/mine`, `/link`, `/unlink`.
+
 ## Running it without Docker
 
 Node.js 24 or newer, no npm dependencies.
