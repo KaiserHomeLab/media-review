@@ -33,6 +33,7 @@ const { appearance, renderPage, LOGO_MAX } = require('./appearance');
 const { jobStatus } = require('./status');
 const { runChecks, report } = require('./diagnostics');
 const { updates: updateCheck } = require('./selfupdate');
+const { health } = require('./health');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -85,9 +86,9 @@ async function readJson(req, max = 64 * 1024) {
  *   seerr?: () => import('./seerr').Seerr | null,
  *   discordStatus?: () => { connected: boolean, error: string | null, postError?: string | null } | null,
  *   jobs?: import('./status').JobStatus, syncNow?: () => Promise<void>,
- *   updates?: import('./selfupdate').Updates }} ctx
+ *   updates?: import('./selfupdate').Updates, syncMinutes?: number }} ctx
  *   updates: whether a newer release is out (GitHub, every 6 hours, unless the Owner turned it off)
- *   jobs: what the background jobs last did; syncNow: run them now
+ *   jobs: what the background jobs last did; syncNow: run them now; syncMinutes: how often they run
  *   seerr: Seerr as set up on the Settings page right now, or null
  *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
  *   setupCode: the one-time code printed in the log until first setup is done
@@ -114,7 +115,10 @@ function createApp({
   jobs = jobStatus(store),
   syncNow = async () => {},
   updates = updateCheck({ store, fetch: f }),
+  syncMinutes = 15,
 }) {
+  // What's wrong right now, for Media Ops' Errors & warnings.
+  const problemsNow = health({ store, jobs, discord: discordStatus, now, syncSeconds: syncMinutes * 60 });
   // The public address: from the container (tests) or the Settings page, read fresh each time.
   const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
   /** @param {Res} res @param {number} status @param {unknown} body */
@@ -538,6 +542,7 @@ function createApp({
     if (p.startsWith('/api/v1/')) {
       if (!apiKeyOk(req)) return json(res, 401, { error: 'invalid API key' });
       if (m === 'GET' && p === '/api/v1/status') return json(res, 200, { app: 'media-review', version: VERSION });
+      if (m === 'GET' && p === '/api/v1/health') return json(res, 200, problemsNow());
       const handled =
         decisions(res, m, p.slice('/api/v1'.length), 'Media Ops') ??
         problemDecisions(req, res, m, p.slice('/api/v1'.length), 'Media Ops') ??
