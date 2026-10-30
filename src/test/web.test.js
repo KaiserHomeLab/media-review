@@ -840,3 +840,26 @@ test('Download backup: the Owner gets a copy of the database; nobody else does',
   assert.equal(body.subarray(0, 15).toString(), 'SQLite format 3');
   assert.ok(logs.includes('Backup downloaded (Settings)'));
 });
+
+test('Title history: the Owner searches any Title and gets its story; nobody else can', async () => {
+  const { req, signIn, store } = await setup();
+  const [owner, alice] = await Promise.all([1, 2].map(async pin => (await signIn(pin)).cookie));
+  store.addDownvote('a', 'm1', NOW - 60);
+  assert.equal((await req('/api/owner/titles?q=dull', { cookie: alice })).status, 403);
+  assert.deepEqual(
+    (await (await req('/api/owner/titles?q=d', { cookie: owner })).json()).titles,
+    [],
+    'two letters at least',
+  );
+  const { titles } = await (await req('/api/owner/titles?q=dull', { cookie: owner })).json();
+  assert.deepEqual(titles, [
+    { ratingKey: 'm1', name: 'Dull Movie', year: 2020, kind: 'movie', library: null, inPlex: true },
+  ]);
+  const h = await (await req('/api/owner/titles/m1/history', { cookie: owner })).json();
+  assert.equal(h.title.poster, '/poster/m1');
+  assert.deepEqual(
+    h.events.map((/** @type {any} */ e) => e.text),
+    ['Downvoted by alice'],
+  );
+  assert.equal((await req('/api/owner/titles/nope/history', { cookie: owner })).status, 404);
+});

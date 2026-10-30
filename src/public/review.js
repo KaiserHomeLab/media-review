@@ -406,10 +406,103 @@ loadAll()
     $('problems-card').hidden = false;
     $('leaving-card').hidden = false;
     $('held-card').hidden = false;
+    $('history-card').hidden = false;
   })
   .catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));
 // Keep it current while it's open, e.g. after a decision made in Media Ops.
 setInterval(() => loadAll().catch(() => {}), 60000);
+
+// ------------------------------------------------------------------ Title history
+// Search any Title, then show its whole story: where it stands, what happened (newest first), who watched it.
+const EVENT_MARK = {
+  downvote: '▼',
+  objection: '▲',
+  queue: '▼',
+  keep: '✓',
+  remove: '⏳',
+  failed: '⚠',
+  deleted: '✕',
+  back: '↺',
+  problem: '⚑',
+  'problem-done': '⚑',
+  ask: '↺',
+  'ask-done': '↺',
+};
+/** @param {string} iso */
+const onDay = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+async function showHistory(key) {
+  const h = await api(`/api/owner/titles/${encodeURIComponent(key)}/history`);
+  const box = $('history');
+  const head = el('li', 'entry');
+  const img = el(h.title.poster ? 'img' : 'div', 'poster');
+  if (h.title.poster) Object.assign(img, { src: h.title.poster, alt: '' });
+  const main = el('div', 'main');
+  const name = el('div', 'head');
+  name.append(el('b', '', h.title.name));
+  if (h.title.year) name.append(el('span', 'muted', ` (${h.title.year})`));
+  const chips = el('div', 'meta');
+  chips.append(el('span', 'chip', h.title.library ?? (h.title.kind === 'show' ? 'Show' : 'Movie')));
+  chips.append(el('span', 'chip kind', h.now));
+  main.append(name, chips);
+  head.append(img, main);
+
+  const events = el('ol', 'timeline');
+  for (const e of h.events) {
+    const li = el('li', `ev ev-${e.kind}`);
+    li.append(el('span', 'ev-mark', EVENT_MARK[e.kind] ?? '•'), el('span', 'ev-when', onDay(e.at)));
+    const body = el('div', 'ev-body');
+    body.append(el('div', '', e.text));
+    for (const p of e.people ?? []) body.append(el('div', 'muted', p));
+    if (e.note) body.append(el('div', 'muted', `“${e.note}”`));
+    li.append(body);
+    events.append(li);
+  }
+  if (!h.events.length) events.append(el('li', 'empty', 'Nothing has happened to it in Media Review yet.'));
+
+  const viewers = el('div', 'line');
+  viewers.textContent = h.viewers.length
+    ? `Watched by ${h.viewers
+        .map(v => `${v.voter} (${v.finished ? 'to the end' : `${v.minutes} min`}, last ${onDay(v.last)})`)
+        .join(', ')}`
+    : 'No plays recorded.';
+  const card = el('ul', 'queue');
+  card.append(head);
+  box.replaceChildren(card, el('h3', 'sub-h', 'What happened'), events, el('h3', 'sub-h', 'Who watched'), viewers);
+  box.hidden = false;
+}
+
+let searchTimer = 0;
+$('history-q').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(async () => {
+    const q = /** @type {HTMLInputElement} */ ($('history-q')).value.trim();
+    const { titles } = q.length < 2 ? { titles: [] } : await api(`/api/owner/titles?q=${encodeURIComponent(q)}`);
+    $('history-results').replaceChildren(
+      ...titles.map(t => {
+        const b = el('button', 'history-hit', '');
+        b.type = 'button';
+        b.append(
+          el('b', '', t.name),
+          el(
+            'span',
+            'muted',
+            `${t.year ? ` (${t.year})` : ''} · ${t.library ?? (t.kind === 'show' ? 'Show' : 'Movie')}`,
+          ),
+        );
+        if (!t.inPlex) b.append(el('span', 'chip', 'not in Plex'));
+        b.addEventListener('click', () => {
+          $('history-results').replaceChildren();
+          showHistory(t.ratingKey).catch(e => fail(e.message));
+        });
+        const li = el('li', '');
+        li.append(b);
+        return li;
+      }),
+    );
+    if (q.length >= 2 && !titles.length) $('history-results').append(el('li', 'empty', 'No titles match.'));
+  }, 200);
+});
 
 // A newer Media Review is out: a small mark on Settings, where it says more.
 api('/api/owner/status')

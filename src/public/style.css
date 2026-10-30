@@ -38,6 +38,7 @@
   --info: #4a90e2; /* Problem Reports */
   --held: #9b7fe6; /* held back: deleted, blocked in Seerr */
   --building: #2bb3a3; /* Downvoted, not at the bar yet */
+  --history: #8f9bb3; /* Title history */
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -58,6 +59,8 @@
     --info: #1f62b8;
     --held: #6a4fc0;
     --building: #12796e;
+    --history: #4f5b70;
+    --history: #4f5b70;
   }
 }
 :root[data-theme='light'] {
@@ -75,6 +78,7 @@
   --info: #1f62b8;
   --held: #6a4fc0;
   --building: #12796e;
+  --history: #4f5b70;
 }
 
 /* Accent presets, the same as Media Ops'. */
@@ -937,6 +941,85 @@ code {
 }
 .kind-building {
   --kind: var(--building);
+}
+.kind-history {
+  --kind: var(--history);
+}
+
+/* Title history: search, results, then one Title's timeline. */
+.history-search {
+  margin: 4px 0 8px;
+}
+.history-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history-hit {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font: inherit;
+}
+.history-hit:hover {
+  background: color-mix(in srgb, var(--kind) 10%, transparent);
+}
+.history-hit .chip {
+  margin-left: auto;
+}
+.timeline {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.timeline .ev {
+  display: grid;
+  grid-template-columns: 1.5em 7.5em 1fr;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.timeline .ev-mark {
+  color: var(--kind);
+  text-align: center;
+}
+.timeline .ev-when {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.timeline .ev-downvote .ev-mark,
+.timeline .ev-queue .ev-mark {
+  color: var(--downvote);
+}
+.timeline .ev-remove .ev-mark,
+.timeline .ev-deleted .ev-mark,
+.timeline .ev-failed .ev-mark {
+  color: var(--critical);
+}
+.timeline .ev-problem .ev-mark,
+.timeline .ev-problem-done .ev-mark {
+  color: var(--info);
+}
+.timeline .ev-ask .ev-mark,
+.timeline .ev-ask-done .ev-mark,
+.timeline .ev-back .ev-mark {
+  color: var(--held);
+}
+@media (max-width: 560px) {
+  .timeline .ev {
+    grid-template-columns: 1.5em 1fr;
+  }
+  .timeline .ev-body {
+    grid-column: 2;
+  }
 }
 /* How close a Title is to the bar. */
 .bar-mini {

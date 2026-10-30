@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS problem_reporters (
  *   reminders: number }} VoterRow
  * @typedef {{ rating_key: string, kind: 'movie' | 'show', title: string, year: number | null,
  *   thumb: string | null, library: string | null, library_key: string | null,
- *   tmdb_id: string | null, tvdb_id: string | null }} TitleRow
+ *   tmdb_id: string | null, tvdb_id: string | null, seen: number }} TitleRow
  * @typedef {{ id: string, voter_id: string, title_key: string, started: number, seconds: number,
  *   watched: number }} PlayRow
  * @typedef {{ id: number, title_key: string, season: number | null, episode: number | null,
@@ -278,6 +278,38 @@ function openStore(file) {
           .all(`%${search.replace(/[\\%_]/g, c => '\\' + c)}%`, library ?? null, library ?? null, limit)
       ),
 
+    // Any Title, in Plex now or not (deleted ones have history too): for the Owner's history search.
+    /** @param {string} search @param {number} limit @returns {TitleRow[]} */
+    findTitles: (search, limit) =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT * FROM titles WHERE title LIKE ? ESCAPE '\\' ORDER BY seen DESC, title COLLATE NOCASE LIMIT ?`,
+          )
+          .all(`%${search.replace(/[\\%_]/g, c => '\\' + c)}%`, limit)
+      ),
+    // Everything recorded about one Title, for its history: rows as stored, each with who it was by.
+    /** @param {string} titleKey */
+    historyOf: titleKey => {
+      /** @param {string} sql */
+      const all = sql => /** @type {any[]} */ (db.prepare(sql).all(titleKey));
+      return {
+        downvotes: all(`SELECT d.voter_id, v.username, d.created_at FROM downvotes d
+          LEFT JOIN voters v ON v.plex_id = d.voter_id WHERE d.title_key = ? ORDER BY d.created_at`),
+        objections: all(`SELECT o.voter_id, v.username, o.created_at FROM objections o
+          LEFT JOIN voters v ON v.plex_id = o.voter_id WHERE o.title_key = ? ORDER BY o.created_at`),
+        queue: all('SELECT * FROM review_queue WHERE title_key = ?'),
+        leaving: all('SELECT * FROM leaving_soon WHERE title_key = ?'),
+        heldBack: all('SELECT * FROM held_back WHERE title_key = ?'),
+        broughtBack: all('SELECT at FROM brought_back WHERE title_key = ? ORDER BY at'),
+        problems: all('SELECT * FROM problem_reports WHERE title_key = ? ORDER BY id'),
+        asks: all(`SELECT a.*, v.username FROM bring_back_asks a LEFT JOIN voters v ON v.plex_id = a.voter_id
+          WHERE a.title_key = ? ORDER BY a.id`),
+        plays: all(`SELECT p.voter_id, v.username, p.started, p.seconds, p.watched FROM plays p
+          LEFT JOIN voters v ON v.plex_id = p.voter_id WHERE p.title_key = ? ORDER BY p.started DESC`),
+      };
+    },
+
     /** @param {Array<{ id: string, voterId: string, titleKey: string, started: number, seconds: number, watched: boolean }>} plays */
     upsertPlays: plays =>
       tx(() => {
@@ -446,6 +478,22 @@ function openStore(file) {
     /** @param {string} titleKey @param {number} now */
     keep: (titleKey, now) =>
       tx(() => {
+        // Who wanted it gone, and who objected, as its history (a Remove keeps them the same way): as queued, or
+        // as Downvoted when it was kept early. Kept after all, while Leaving Soon, they were kept at the Remove.
+        const queued = db.prepare('SELECT 1 FROM queued_downvotes WHERE title_key = ?').get(titleKey);
+        const leaving = db.prepare('SELECT 1 FROM leaving_soon WHERE title_key = ?').get(titleKey);
+        if (!leaving)
+          db.prepare(
+            queued
+              ? `INSERT INTO title_votes (title_key, at, voter_id, kind, vote_weight)
+                 SELECT title_key, ?, voter_id, 'downvote', vote_weight FROM queued_downvotes WHERE title_key = ?`
+              : `INSERT INTO title_votes (title_key, at, voter_id, kind, vote_weight)
+                 SELECT title_key, ?, voter_id, 'downvote', NULL FROM downvotes WHERE title_key = ?`,
+          ).run(now, titleKey);
+        db.prepare(
+          `INSERT INTO title_votes (title_key, at, voter_id, kind, vote_weight)
+           SELECT title_key, ?, voter_id, 'objection', vote_weight FROM objections WHERE title_key = ?`,
+        ).run(now, titleKey);
         for (const table of ['review_queue', 'queued_downvotes', 'downvotes', 'leaving_soon', 'objections'])
           db.prepare(`DELETE FROM ${table} WHERE title_key = ?`).run(titleKey);
         db.prepare(`INSERT INTO decisions (title_key, decision, at) VALUES (?, 'keep', ?)`).run(titleKey, now);
