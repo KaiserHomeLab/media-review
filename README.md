@@ -57,7 +57,8 @@ started and haven't finished is Leaving Soon, and again on its last day. Not if 
 They can turn it off with `/reminders off` or on their page, and you can turn it off for everyone
 under Settings → Discord.
 
-Their own reports and asks keep themselves up to date, with a notice when you've answered one.
+Their own reports and asks keep themselves up to date, with a notice when you've answered one, and
+a Discord DM too if they connected Discord.
 
 <img src="docs/screenshots/phone.png" alt="Media Review on a phone" width="300">
 

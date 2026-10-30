@@ -735,15 +735,21 @@ function openStore(file) {
           .prepare('SELECT * FROM problem_reports WHERE created_at >= ? OR decided_at >= ? ORDER BY id')
           .all(since, since)
       ),
-    /** @param {number} since @returns {Array<{ id: number, title_key: string, voter_id: string, username: string | null, note: string | null, created_at: number }>} */
+    /**
+     * Asks to bring back made or answered since `since`.
+     * @param {number} since @returns {Array<{ id: number, title_key: string, voter_id: string, username: string | null,
+     *   note: string | null, created_at: number, outcome: 'brought-back' | 'declined' | null, owner_note: string | null,
+     *   decided_at: number | null }>}
+     */
     asksSince: since =>
       /** @type {any} */ (
         db
           .prepare(
-            `SELECT a.id, a.title_key, a.voter_id, v.username, a.note, a.created_at FROM bring_back_asks a
-             LEFT JOIN voters v ON v.plex_id = a.voter_id WHERE a.created_at >= ? ORDER BY a.id`,
+            `SELECT a.id, a.title_key, a.voter_id, v.username, a.note, a.created_at, a.outcome, a.owner_note,
+               a.decided_at FROM bring_back_asks a LEFT JOIN voters v ON v.plex_id = a.voter_id
+             WHERE a.created_at >= ? OR a.decided_at >= ? ORDER BY a.id`,
           )
-          .all(since)
+          .all(since, since)
       ),
     /** @param {number} since @returns {Array<{ title_key: string, at: number }>} */
     broughtBackSince: since =>
