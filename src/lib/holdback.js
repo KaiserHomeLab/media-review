@@ -118,7 +118,15 @@ function asksBy(store, voterId, now) {
 function historyOf(store, titleKey) {
   /** @type {Map<number, { at: string, downvotes: any[], objections: any[] }>} */
   const rounds = new Map();
+  // The votes it was Removed and deleted with; a Keep records its own too, for the Title's full history.
+  const kept = new Set(
+    store
+      .decisionsOf(titleKey)
+      .filter(d => d.decision === 'keep')
+      .map(d => d.at),
+  );
   for (const v of store.votesOf(titleKey)) {
+    if (kept.has(v.at)) continue;
     const r = rounds.get(v.at) ?? { at: iso(v.at), downvotes: [], objections: [] };
     (v.kind === 'downvote' ? r.downvotes : r.objections).push({
       voter: v.username ?? v.voter_id,

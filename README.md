@@ -92,6 +92,12 @@ it off Seerr's blocklist and requests it. **Decline** keeps it held back.
 
 ![Held back](docs/screenshots/held-back.png)
 
+**Title history**: search any title, deleted ones too, and see its whole story: who Downvoted it
+each time, every Keep and Remove, deletion, Problem Reports, asks to bring it back, and who watched
+it.
+
+![Title history](docs/screenshots/title-history.png)
+
 **Discord, if you want it.** Announcements everyone sees (Leaving Soon with the poster, a last-day
 reminder, fixed problems), which never name who Downvoted. Plus a private channel for you: new
 Review Queue entries, Problem Reports, asks, failed deletions, and any app that's been unreachable

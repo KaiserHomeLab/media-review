@@ -36,6 +36,7 @@ const { runChecks, report } = require('./diagnostics');
 const { updates: updateCheck } = require('./selfupdate');
 const { health } = require('./health');
 const backup = require('./backup');
+const { titleHistory } = require('./history');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -759,6 +760,28 @@ function createApp({
         checkUpdates: updates.enabled(),
       });
       if (m === 'GET' && p === '/api/owner/status') return json(res, 200, statusBody());
+      // Title history: search any Title (in Plex now or not), then its whole story.
+      if (m === 'GET' && p === '/api/owner/titles') {
+        const q = String(url.searchParams.get('q') ?? '').trim();
+        if (q.length < 2) return json(res, 200, { titles: [] });
+        return json(res, 200, {
+          titles: store.findTitles(q, 20).map(t => ({
+            ratingKey: t.rating_key,
+            name: t.title,
+            year: t.year ?? null,
+            kind: t.kind,
+            library: t.library ?? null,
+            inPlex: !!t.seen,
+          })),
+        });
+      }
+      const th = p.match(/^\/api\/owner\/titles\/([^/]+)\/history$/);
+      if (m === 'GET' && th) {
+        const story = titleHistory(store, decodeURIComponent(th[1]), {
+          posterUrl: key => `/poster/${encodeURIComponent(key)}`,
+        });
+        return story ? json(res, 200, story) : json(res, 404, { error: 'not found' });
+      }
       // A backup to download: a fresh copy of the database, which holds the app keys and tokens too.
       if (m === 'GET' && p === '/api/owner/backup') {
         const tmp = path.join(os.tmpdir(), `media-review-${crypto.randomBytes(8).toString('hex')}.db`);

@@ -8,6 +8,7 @@ number, a fix the last one.
 
 ### Added
 
+- Title history on the Review Queue page: search any Title, deleted ones too, and see where it stands and everything that happened to it, newest first. That covers Downvotes, the Review Queue, each Keep and Remove with who Downvoted and objected, deletion, Problem Reports, asks to bring it back, and who watched it. A Keep now records who Downvoted and objected, as a Remove does, so it appears in the history (from this version on).
 - Your answer to an ask to bring something back reaches the friend as a Discord DM, if they connected Discord: coming back, or not, with your note. It works like the DM for an answered Problem Report.
 - Backups: a copy of the database each night in `/config/backups`, made before anything is deleted (the newest 7 are kept), and a **Download backup** button under Settings → Status. The Status card shows the last one, and a failed one shows in Media Ops' Errors & warnings.
 - Leaving Soon DMs: a friend who connected Discord hears privately when something they started and haven't finished is Leaving Soon, and again on its last day. "Started" means played in the last 90 days; for a show, any episode. Not to anyone who Downvoted it. Each friend can turn them off (`/reminders off`, or on their page), and the Owner for everyone (Settings → Discord). The bot no longer needs a channel to send DMs.
