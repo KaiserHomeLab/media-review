@@ -1,6 +1,6 @@
 {
   "name": "media-review",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Downvotes and a Review Queue for a Plex server, decided by the Owner in Media Ops",
   "main": "server.js",
   "private": true,

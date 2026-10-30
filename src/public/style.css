@@ -1307,3 +1307,21 @@ img.logo.custom {
   max-height: 260px;
   overflow: auto;
 }
+
+.version-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: -4px 0 14px;
+}
+.version-line .check {
+  margin-left: auto;
+}
+.version-line .update,
+.top-right .update {
+  font-weight: 600;
+  color: var(--accent);
+}

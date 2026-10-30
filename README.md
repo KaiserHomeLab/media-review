@@ -121,6 +121,12 @@ docker run -d --name media-review --restart unless-stopped -p 8485:8485 \
   ghcr.io/kaiserhomelab/media-review:latest
 ```
 
+**Want to control when it updates?** `latest` always has the newest version. Use `:0.9` instead
+to get fixes but not new features, or `:0.9.0` to stay on exactly that version. What changed in
+each version is in the [changelog](CHANGELOG.md) and on the
+[releases page](https://github.com/KaiserHomeLab/media-review/releases). Settings → Status says
+when a newer version is out.
+
 ## First steps
 
 1. **Claim it.** Open the container's log (Unraid: **Docker → media-review → Logs**). It shows a

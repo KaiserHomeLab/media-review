@@ -35,7 +35,7 @@ const fakePlex = /** @type {any} */ ({
   ],
 });
 
-/** @param {{ publicUrl?: string, leavingChanged?: () => void, seerr?: () => any }} [extra] */
+/** @param {{ publicUrl?: string, leavingChanged?: () => void, seerr?: () => any, updates?: any }} [extra] */
 async function setup(extra = {}) {
   const logs = /** @type {string[]} */ ([]);
   const store = openStore(':memory:');
@@ -53,6 +53,8 @@ async function setup(extra = {}) {
     settings: DEFAULTS,
     now: () => NOW,
     log: m => logs.push(m),
+    // No real GitHub in tests: a check that says this version is the newest.
+    updates: /** @type {any} */ ({ latest: () => null, enabled: () => true, setEnabled: () => {} }),
     publicDir: path.join(__dirname, '..', 'public'),
     ...extra,
   });
@@ -786,4 +788,27 @@ test('Status, Sync now and Diagnostics: Owner only; the report leaves out addres
   assert.match(d.report, /- sync: FAILED: .* 2 min ago \(titles 1234, play history failed\)/);
   assert.match(d.report, /- access: ok, 2 min ago \(1 signed out, 0 back\)/);
   assert.doesNotMatch(d.report, /192\.168|alice/, 'no IP addresses, no names');
+});
+
+test('Status says which version this is and whether a newer one is out; the Owner can turn checking off', async () => {
+  let on = true;
+  const fakeUpdates = /** @type {any} */ ({
+    latest: () => (on ? { version: '9.9.9', url: 'https://example.invalid/r' } : null),
+    enabled: () => on,
+    setEnabled: (/** @type {boolean} */ v) => (on = v),
+  });
+  const { req, signIn } = await setup(/** @type {any} */ ({ updates: fakeUpdates }));
+  const owner = (await signIn(1)).cookie;
+  const st = await (await req('/api/owner/status', { cookie: owner })).json();
+  assert.match(st.version, /^\d+\.\d+\.\d+$/);
+  assert.deepEqual([st.update.version, st.checkUpdates], ['9.9.9', true]);
+  const off = await (
+    await req('/api/owner/check-updates', {
+      method: 'PUT',
+      cookie: owner,
+      headers: { 'content-type': 'application/json' },
+      body: '{"on":false}',
+    })
+  ).json();
+  assert.deepEqual([off.update, off.checkUpdates], [null, false]);
 });

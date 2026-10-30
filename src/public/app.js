@@ -755,6 +755,17 @@ async function start() {
         $('queue-badge').hidden = !reviewQueue.length;
       })
       .catch(() => {});
+  // A newer Media Review is out: a small mark on Settings, where it says more.
+  if (me.isOwner)
+    api('/api/owner/status')
+      .then(st => {
+        if (st.update)
+          $('settings-link').append(
+            ' ',
+            Object.assign(el('span', 'chip review', 'update'), { title: `Media Review ${st.update.version} is out` }),
+          );
+      })
+      .catch(() => {});
   $('app').hidden = false;
   let timer;
   $('search').addEventListener('input', e => {
