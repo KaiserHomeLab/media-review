@@ -6,9 +6,10 @@ number, a fix the last one.
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-30
+## [0.9.0] - 2026-10-30
 
-The first release. Friends Downvote what they think should go, weighted by who has actually tried it;
+The first release, before 1.0: 1.0 comes once everything has run for real on the Owner's server,
+overnight deletion included. Friends Downvote what they think should go, weighted by who has actually tried it;
 you decide Keep or Remove; a Removed title spends two weeks Leaving Soon in Plex before it's deleted
 overnight; deleted titles are held back in Seerr until you bring them back. Problem Reports, Objections,
 a Discord bot, and Media Ops' Review Queue card. Everything below is what's in it.
@@ -18,7 +19,7 @@ a Discord bot, and Media Ops' Review Queue card. Everything below is what's in i
 - **Version numbers and updates.** Settings → Status shows which version you run, and says when a
   newer one is out (it asks GitHub at most every 6 hours, sending nothing about your server; you can
   turn it off there). The Owner's pages mark ⚙ Settings with "update" when there is one. To stay on a
-  version instead of `latest`, use a tag like `:1.0` (fixes, not new features) or `:1.0.0`.
+  version instead of `latest`, use a tag like `:0.9` (fixes, not new features) or `:0.9.0`.
 - **Settings → Status**: what Media Review last did on its own (the sync with Plex and Tautulli, who
   has access, overnight deletion, holding back in Seerr, the Plex collection, Discord), each with a
   green or red dot and what went wrong. **Sync now** runs it straight away. **Run diagnostics** checks
