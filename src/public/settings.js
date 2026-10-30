@@ -502,6 +502,18 @@ function showStatus(st) {
           : `${since(d.at, now)}: ${d.error}`,
     ),
   );
+  const b = jobs.backup;
+  rows.push(
+    statusRow(
+      b ? b.ok : null,
+      'Nightly backup',
+      !b
+        ? 'Not made yet.'
+        : b.ok
+          ? `${since(b.at, now)}: ${b.file}, ${(b.bytes / 1048576).toFixed(1)} MB, in /config/backups (the newest ${b.kept} kept).`
+          : `${since(b.at, now)}: ${b.error}`,
+    ),
+  );
   for (const [key, label] of [
     ['holdback', 'Holding back in Seerr'],
     ['collections', 'Plex Leaving Soon collection'],

@@ -24,6 +24,7 @@ const { checkAccess } = require('./lib/access');
 const { jobStatus } = require('./lib/status');
 const { inQuietWindow } = require('./lib/rules');
 const { runDeletions } = require('./lib/deletions');
+const backup = require('./lib/backup');
 const { botRunner } = require('./lib/bot');
 
 const dataDir = process.env.DATA_DIR ?? path.join(__dirname, 'data');
@@ -241,6 +242,9 @@ const syncOnce = async () => {
     const r = await checkAccess({ store, sharedWith: m => plex.sharedWith(m), machineId, now, log });
     return { ok: !r.error, ...r };
   });
+  // A copy of the database each night, in /config/backups (the newest 7), before anything is deleted.
+  if (backup.due(status.read().backup, now(), inQuietWindow(now(), settings.deleteHour)))
+    await job('backup', async () => backup.nightly(store, path.join(dataDir, 'backups'), now()));
   // Overnight, Titles whose Leaving Soon is over are deleted; then Plex's collections catch up. The Status
   // card shows the last night it ran.
   if (inQuietWindow(now(), settings.deleteHour) || !status.read().deletions)

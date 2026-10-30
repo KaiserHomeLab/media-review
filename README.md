@@ -196,6 +196,10 @@ into a GitHub issue, with no keys, tokens, IP addresses or names.
 
 - **Your data** is one file, `media-review.db`, in the folder you mapped to `/config`: every
   Downvote, decision, report and setting. Back up that folder and you've backed up everything.
+- **Backups are made for you.** Each night, before anything is deleted, a copy goes to
+  `/config/backups` (the newest 7 are kept), and Settings → Status has a **Download backup**
+  button. A backup holds your app keys and tokens too, so keep it private. To restore one, stop the
+  container, put the copy in `/config` as `media-review.db`, and start it again.
 - **Your API keys stay on the server.** They're never sent to a browser.
 - **Nothing is deleted without you.** A title is only deleted after you Removed it and its Leaving
   Soon ran out. Deletion runs overnight, between 04:00 and 07:00 in the container's time zone.

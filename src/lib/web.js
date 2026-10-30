@@ -6,6 +6,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const {
@@ -34,6 +35,7 @@ const { jobStatus } = require('./status');
 const { runChecks, report } = require('./diagnostics');
 const { updates: updateCheck } = require('./selfupdate');
 const { health } = require('./health');
+const backup = require('./backup');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -757,6 +759,25 @@ function createApp({
         checkUpdates: updates.enabled(),
       });
       if (m === 'GET' && p === '/api/owner/status') return json(res, 200, statusBody());
+      // A backup to download: a fresh copy of the database, which holds the app keys and tokens too.
+      if (m === 'GET' && p === '/api/owner/backup') {
+        const tmp = path.join(os.tmpdir(), `media-review-${crypto.randomBytes(8).toString('hex')}.db`);
+        try {
+          backup.copyTo(store, tmp);
+          const body = fs.readFileSync(tmp);
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.sqlite3',
+            'Content-Disposition': `attachment; filename="media-review-${backup.day(now())}.db"`,
+            'Content-Length': body.length,
+            'Cache-Control': 'no-store',
+          });
+          res.end(body);
+        } finally {
+          fs.rmSync(tmp, { force: true });
+        }
+        log('Backup downloaded (Settings)');
+        return true;
+      }
       if (m === 'POST' && p === '/api/owner/sync') {
         log('Sync now (Settings)');
         await syncNow();

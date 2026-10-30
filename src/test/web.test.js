@@ -825,3 +825,18 @@ test('Status says which version this is and whether a newer one is out; the Owne
   ).json();
   assert.deepEqual([off.update, off.checkUpdates], [null, false]);
 });
+
+test('Download backup: the Owner gets a copy of the database; nobody else does', async () => {
+  const { req, signIn, logs } = await setup();
+  const [owner, alice] = await Promise.all([1, 2].map(async pin => (await signIn(pin)).cookie));
+  assert.equal((await req('/api/owner/backup', { cookie: alice })).status, 403);
+  const res = await req('/api/owner/backup', { cookie: owner });
+  assert.equal(res.status, 200);
+  assert.match(
+    String(res.headers.get('content-disposition')),
+    /^attachment; filename="media-review-\d{4}-\d{2}-\d{2}\.db"$/,
+  );
+  const body = Buffer.from(await res.arrayBuffer());
+  assert.equal(body.subarray(0, 15).toString(), 'SQLite format 3');
+  assert.ok(logs.includes('Backup downloaded (Settings)'));
+});
