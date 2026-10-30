@@ -32,6 +32,7 @@ const { posterOk } = require('./notices');
 const { appearance, renderPage, LOGO_MAX } = require('./appearance');
 const { jobStatus } = require('./status');
 const { runChecks, report } = require('./diagnostics');
+const { updates: updateCheck } = require('./selfupdate');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -83,7 +84,9 @@ async function readJson(req, max = 64 * 1024) {
  *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings>,
  *   seerr?: () => import('./seerr').Seerr | null,
  *   discordStatus?: () => { connected: boolean, error: string | null, postError?: string | null } | null,
- *   jobs?: import('./status').JobStatus, syncNow?: () => Promise<void> }} ctx
+ *   jobs?: import('./status').JobStatus, syncNow?: () => Promise<void>,
+ *   updates?: import('./selfupdate').Updates }} ctx
+ *   updates: whether a newer release is out (GitHub, every 6 hours, unless the Owner turned it off)
  *   jobs: what the background jobs last did; syncNow: run them now
  *   seerr: Seerr as set up on the Settings page right now, or null
  *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
@@ -110,6 +113,7 @@ function createApp({
   discordStatus = () => null,
   jobs = jobStatus(store),
   syncNow = async () => {},
+  updates = updateCheck({ store, fetch: f }),
 }) {
   // The public address: from the container (tests) or the Settings page, read fresh each time.
   const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
@@ -725,12 +729,24 @@ function createApp({
       if (handled) return handled;
       if (p === '/api/owner/rules') return rulesRoute(req, res, m);
       // Status: what the background jobs last did; Sync now; Diagnostics, as in Media Ops.
-      if (m === 'GET' && p === '/api/owner/status')
-        return json(res, 200, { jobs: jobs.read(), discord: discordStatus(), now: now() });
+      // Status also says which version this is, and whether a newer one is out.
+      const statusBody = () => ({
+        jobs: jobs.read(),
+        discord: discordStatus(),
+        now: now(),
+        version: VERSION,
+        update: updates.latest(),
+        checkUpdates: updates.enabled(),
+      });
+      if (m === 'GET' && p === '/api/owner/status') return json(res, 200, statusBody());
       if (m === 'POST' && p === '/api/owner/sync') {
         log('Sync now (Settings)');
         await syncNow();
-        return json(res, 200, { jobs: jobs.read(), discord: discordStatus(), now: now() });
+        return json(res, 200, statusBody());
+      }
+      if (m === 'PUT' && p === '/api/owner/check-updates') {
+        updates.setEnabled((await readJson(req)).on !== false);
+        return json(res, 200, statusBody());
       }
       if (m === 'POST' && p === '/api/owner/diagnostics') {
         const checks = await runChecks({ apps, plex, probe, fetch: f });

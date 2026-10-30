@@ -514,6 +514,22 @@ function showStatus(st) {
       ),
     );
   $('status-list').replaceChildren(...rows);
+  // Which version this is, whether a newer one is out, and the switch for checking.
+  const line = $('version-line');
+  const box = Object.assign(el('input', ''), { type: 'checkbox', checked: st.checkUpdates, id: 'check-updates' });
+  box.addEventListener('change', async () => {
+    showStatus(await api('/api/owner/check-updates', 'PUT', { on: box.checked }));
+  });
+  const label = el('label', 'check');
+  label.append(box, document.createTextNode(' Check GitHub for new versions'));
+  const what = st.update
+    ? Object.assign(el('a', 'update', `Update available: ${st.update.version}`), {
+        href: st.update.url ?? 'https://github.com/KaiserHomeLab/media-review/releases',
+        target: '_blank',
+        rel: 'noopener',
+      })
+    : el('span', 'muted', st.checkUpdates ? 'up to date' : '');
+  line.replaceChildren(el('span', '', `Media Review ${st.version}`), what, label);
   $('status-when').textContent = s ? `synced ${since(s.at, now)}` : '';
   $('status-card').hidden = false;
 }

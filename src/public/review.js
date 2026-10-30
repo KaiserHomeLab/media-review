@@ -410,3 +410,14 @@ loadAll()
   .catch(e => fail(e.message === 'sign in first' ? 'Sign in as the Owner first.' : e.message));
 // Keep it current while it's open, e.g. after a decision made in Media Ops.
 setInterval(() => loadAll().catch(() => {}), 60000);
+
+// A newer Media Review is out: a small mark on Settings, where it says more.
+api('/api/owner/status')
+  .then(st => {
+    if (st.update)
+      $('settings-link').append(
+        ' ',
+        Object.assign(el('span', 'chip review', 'update'), { title: `Media Review ${st.update.version} is out` }),
+      );
+  })
+  .catch(() => {});
