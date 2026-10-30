@@ -6,6 +6,10 @@ number, a fix the last one.
 
 ## [Unreleased]
 
+### Added
+
+- Media Review's problems show in Media Ops' Errors & warnings, and Media Ops notifies about them like any other app: a background job that failed its last run, a Title that couldn't be deleted overnight, no sync for over an hour, or the Discord bot not connected for five minutes (`GET /api/v1/health`).
+
 ## [0.9.0] - 2026-10-30
 
 The first release, before 1.0: 1.0 comes once everything has run for real on the Owner's server,

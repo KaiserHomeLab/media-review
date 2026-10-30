@@ -176,6 +176,7 @@ const bot = botRunner({
 });
 bot.refresh();
 
+const syncMinutes = Math.max(1, Number(process.env.SYNC_MINUTES ?? 15));
 const app = createApp({
   store,
   plex,
@@ -188,6 +189,7 @@ const app = createApp({
   seerr: () => seerrFrom(apps),
   jobs: jobStatus(store),
   syncNow: () => runSync(),
+  syncMinutes,
   discordStatus: () => {
     const s = bot.status();
     return s && { ...s, postError };
@@ -207,7 +209,7 @@ const app = createApp({
 const port = Number(process.env.PORT ?? 8485);
 http.createServer(app).listen(port, () => log(`Media Review listening on :${port}`));
 
-const every = Math.max(1, Number(process.env.SYNC_MINUTES ?? 15)) * 60000;
+const every = syncMinutes * 60000;
 // What each job last did, for Settings → Status.
 const status = jobStatus(store);
 // Each job runs whatever happened to the one before, and records how it went.

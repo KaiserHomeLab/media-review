@@ -218,6 +218,7 @@ Every request sends the key as `X-Api-Key`. The Owner's own pages use the same r
 `/api/owner/`, with their session instead of the key.
 
 - `GET /api/v1/status`: `{ app: "media-review", version }`
+- `GET /api/v1/health`: what's wrong right now, as `[{ type: "error" | "warning", source, message }]` (the shape Sonarr and Radarr use): a background job that failed its last run, a Title that couldn't be deleted overnight, no sync for over an hour, or the Discord bot not connected. Media Ops shows these under Errors & warnings.
 - `GET /api/v1/review-queue`: `{ reviewQueue: [...] }`, one entry per Title waiting for the Owner, with each Downvote's Voter and Vote Weight
 - `POST /api/v1/review-queue/:ratingKey/keep` and `…/remove`: the Owner's decision. Remove answers `{ removed: true, endsAt }`
 - `GET /api/v1/building-up`: `{ buildingUp: [...] }`, the Titles with Downvotes that haven't reached the bar yet, closest first. Each has its weight so far, the weight needed, the Audience against the Minimum Audience, `progress` (0–1), and each Downvote with its Voter, the weight it adds now, and whether it counts yet

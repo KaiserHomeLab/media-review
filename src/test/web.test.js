@@ -181,6 +181,8 @@ test('Media Ops reads the Review Queue with the API key, and nothing without it'
 
   const key = { 'x-api-key': apiKey };
   assert.equal((await (await req('/api/v1/status', { headers: key })).json()).app, 'media-review');
+  assert.equal((await req('/api/v1/health')).status, 401);
+  assert.deepEqual(await (await req('/api/v1/health', { headers: key })).json(), [], "what's wrong: nothing");
   await post(voters[0], '/api/titles/m1/downvote');
   assert.deepEqual((await (await req('/api/v1/review-queue', { headers: key })).json()).reviewQueue, []);
   await post(voters[1], '/api/titles/m1/downvote');
