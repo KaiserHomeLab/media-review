@@ -247,6 +247,24 @@ function collect(ctx) {
 
   for (const a of store.asksSince(since)) {
     const t = titleBits(ctx, a.title_key);
+    // The friend who asked hears the answer privately, if they linked Discord.
+    const link = a.outcome && a.decided_at != null && a.decided_at >= since && store.linkFor(a.voter_id);
+    if (link)
+      add(`ask-dm:${a.id}`, `dm:${link.discord_id}`, {
+        embeds: [
+          {
+            title: `${a.outcome === 'brought-back' ? 'Coming back' : 'Not coming back'}: ${t?.embedTitle ?? a.title_key}`,
+            description: `${
+              a.outcome === 'brought-back'
+                ? "The Owner is bringing it back, as you asked. It's in the library again once it has downloaded."
+                : 'The Owner decided not to bring it back.'
+            }${a.owner_note ? ` The Owner says: ${a.owner_note}` : ''}`,
+            color: a.outcome === 'brought-back' ? COLOR.back : COLOR.leaving,
+            ...(t?.thumbnail ? { thumbnail: t.thumbnail } : {}),
+          },
+        ],
+      });
+    if (a.created_at < since) continue;
     owner(
       `ask:${a.id}`,
       `↺ ${a.username ?? 'A friend'} asked to bring back ${t?.name ?? a.title_key}${a.note ? `: “${a.note}”` : ''}. Decide on the Review Queue page.`,

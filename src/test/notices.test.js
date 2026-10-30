@@ -162,6 +162,39 @@ test('asks to bring back, and a deletion that failed (once), go to the Owner', (
   );
 });
 
+test('the answer to an ask to bring back goes to the friend who asked, privately, once', () => {
+  const s = setup();
+  for (const k of ['m2', 'm3']) {
+    s.store.remove(k, NOW - 20 * DAY, NOW - 6 * DAY);
+    s.store.deleted(k, NOW - 6 * DAY, ['Radarr']);
+  }
+  H.ask(s.store, 'a', 'm3', 'please', NOW - 5 * DAY); // asked before the channels were set: answered after
+  H.ask(s.store, 'b', 'm3', null, NOW - 60);
+  H.ask(s.store, 'a', 'm2', null, NOW - 60);
+  s.store.link('discord-a', 'a', 'a', NOW - DAY);
+  s.store.release('m3', 'Back tonight', NOW - 30);
+  assert.deepEqual(H.decline(s.store, 'm2', '', NOW - 20), { ok: true });
+  s.collect();
+  s.collect();
+  const dms = s.notices('dm:discord-a');
+  assert.deepEqual(
+    dms.map(n => [n.embeds[0].title, n.embeds[0].description]),
+    [
+      [
+        'Coming back: Third',
+        "The Owner is bringing it back, as you asked. It's in the library again once it has downloaded. The Owner says: Back tonight",
+      ],
+      ['Not coming back: Other Movie · Movies', 'The Owner decided not to bring it back.'],
+    ],
+  );
+  assert.equal(
+    s.store.db.prepare("SELECT COUNT(*) AS n FROM notices WHERE target LIKE 'dm:%'").get()?.n,
+    2,
+    'bob never linked Discord',
+  );
+  assert.equal(s.notices('owner').filter(n => /asked to bring back/.test(n.content)).length, 2, 'the new asks only');
+});
+
 test('an app down for an hour is reported once, and again when it is back', () => {
   const s = setup();
   const h = N.health();
