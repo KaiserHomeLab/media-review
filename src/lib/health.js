@@ -19,6 +19,7 @@ const JOBS = /** @type {const} */ ([
   ['holdback', 'Holding back in Seerr'],
   ['collections', 'Plex Leaving Soon collection'],
   ['discord', 'Discord'],
+  ['backup', 'Nightly backup'],
 ]);
 
 /** @typedef {{ type: 'error' | 'warning', source: string, message: string }} Problem */
