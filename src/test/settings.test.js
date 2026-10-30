@@ -460,6 +460,8 @@ test("Discord in Settings: Test lists the bot's servers, Save needs one of them,
     announceChannel: '',
     ownerChannel: '',
     noticesFrom: NOW,
+    leavingDms: true,
+    dmsFrom: NOW,
   });
   const notThere = await s.req('/api/owner/settings/discord', {
     method: 'PUT',

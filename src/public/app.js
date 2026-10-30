@@ -573,6 +573,19 @@ async function loadDiscord() {
     });
     parts.push(document.createTextNode(' '), b);
   }
+  // Leaving Soon DMs for what they started; null when the Owner has them off.
+  if (d.linked && d.reminders !== null) {
+    const box = Object.assign(document.createElement('input'), { type: 'checkbox', checked: d.reminders });
+    box.addEventListener('change', () =>
+      api('/api/discord/reminders', { method: 'PUT', body: JSON.stringify({ on: box.checked }) }).catch(e => {
+        box.checked = !box.checked;
+        showError(e.message);
+      }),
+    );
+    const label = el('label', 'check');
+    label.append(box, document.createTextNode(' DM me when something I started is Leaving Soon'));
+    parts.push(document.createTextNode(' · '), label);
+  }
   $('discord-line').replaceChildren(...parts);
 }
 

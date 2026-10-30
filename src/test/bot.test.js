@@ -154,6 +154,17 @@ test('the Owner can link, but does not Downvote from Discord', async () => {
   assert.match(await s.run('d-owner', 'link'), /You're connected as the Owner/);
 });
 
+test('/reminders off and on', async () => {
+  const s = setup();
+  s.store.link('d-a', 'a', null, NOW);
+  assert.match(await s.run('d-a', 'reminders', { set: 'off' }), /^Reminders off/);
+  assert.equal(s.store.voter('a')?.reminders, 0);
+  assert.match(await s.run('d-a', 'reminders', { set: 'on' }), /^Reminders on/);
+  assert.equal(s.store.voter('a')?.reminders, 1);
+  s.store.link('d-owner', 'owner', null, NOW);
+  assert.match(await s.run('d-owner', 'reminders', { set: 'on' }), /Reminders are for friends/);
+});
+
 test('unlink and link again; linking a second Discord replaces the first', async () => {
   const s = setup();
   s.store.link('d-alice', 'a', null, NOW);
@@ -246,7 +257,7 @@ test('the bot connects once set up, registers its commands in that server, answe
   assert.equal(made.length, 1, 'once, however often Settings are saved');
   await made[0].g.onReady({ applicationId: 'app1', username: 'MR' });
   assert.deepEqual(registered, [
-    ['app1', 'g1', ['downvote', 'withdraw', 'object', 'report', 'mine', 'link', 'unlink']],
+    ['app1', 'g1', ['downvote', 'withdraw', 'object', 'report', 'mine', 'reminders', 'link', 'unlink']],
   ]);
   await made[0].g.onReady({ applicationId: 'app1', username: 'MR' }); // a reconnect
   assert.equal(registered.length, 1, 'commands are only sent again when they change');

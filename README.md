@@ -52,6 +52,11 @@ can't simply be requested and downloaded again; friends ask you instead.
 **Use Discord**, if you add the bot: `/downvote`, `/report`, `/object` and `/mine`, with title
 autocomplete and replies only they can see.
 
+**Hear about what they started.** A friend who connected Discord gets a DM when something they
+started and haven't finished is Leaving Soon, and again on its last day. Not if they Downvoted it.
+They can turn it off with `/reminders off` or on their page, and you can turn it off for everyone
+under Settings → Discord.
+
 Their own reports and asks keep themselves up to date, with a notice when you've answered one.
 
 <img src="docs/screenshots/phone.png" alt="Media Review on a phone" width="300">

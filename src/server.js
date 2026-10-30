@@ -137,7 +137,8 @@ let postError = null;
 let noticing = false;
 const runNotices = async () => {
   const d = apps.read().discord;
-  if (noticing || !d || !(d.announceChannel || d.ownerChannel)) return;
+  const dms = d && d.leavingDms !== false ? { since: d.dmsFrom ?? d.noticesFrom ?? now() } : null;
+  if (noticing || !d || !(d.announceChannel || d.ownerChannel || dms)) return;
   noticing = true;
   try {
     notices.collect({
@@ -149,6 +150,7 @@ const runNotices = async () => {
       publicUrl: (apps.read().publicUrl ?? '').replace(/\/+$/, '') || null,
       tz: process.env.TZ || undefined,
       health: healthy,
+      dms,
     });
     const r = await notices.deliver({
       store,

@@ -21,6 +21,7 @@ function setup() {
     { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', year: 2020, library: 'Movies', thumb: '/t/m1' },
     { ratingKey: 'm2', kind: 'movie', title: 'Other Movie', library: 'Movies' },
     { ratingKey: 'm3', kind: 'movie', title: 'Third', tmdbId: '3' },
+    { ratingKey: 's1', kind: 'show', title: 'Long Show', library: 'TV Shows' },
   ]);
   for (const [id, name] of [
     ['a', 'alice'],
@@ -176,6 +177,88 @@ test('an app down for an hour is reported once, and again when it is back', () =
   assert.deepEqual(
     s.notices('owner').map(n => n.content.split(' (')[0].split(':')[0]),
     ["⚠ Media Review can't reach Seerr", '✓ Seerr is reachable again.'],
+  );
+});
+
+test('Leaving Soon DMs: to friends who started it and did not finish or Downvote it, then on its last day', () => {
+  const s = setup();
+  for (const [id, name] of [
+    ['d', 'dave'],
+    ['e', 'erin'],
+    ['f', 'frank'],
+  ])
+    s.store.upsertVoter({ plexId: id, username: name });
+  /** @param {string} voter @param {string} title @param {boolean} watched @param {number} [ago] days */
+  const played = (voter, title, watched, ago = 10) =>
+    s.store.upsertPlays([
+      {
+        id: `${voter}${title}${ago}`,
+        voterId: voter,
+        titleKey: title,
+        started: NOW - ago * DAY,
+        seconds: 600,
+        watched,
+      },
+    ]);
+  played('a', 'm1', false); // started: yes
+  played('b', 'm1', true); // finished the movie: no
+  played('c', 'm1', false); // Downvoted it: no
+  castDownvote(s.store, DEFAULTS, 'c', 'm1', NOW - 2 * DAY);
+  played('d', 'm1', false, 200); // too long ago: no
+  played('e', 'm1', false); // reminders off: no
+  s.store.setReminders('e', false);
+  played('f', 'm1', false); // never linked Discord: no
+  played('a', 's1', true); // a show: one episode to the end still counts as started
+  for (const v of ['a', 'b', 'c', 'd', 'e']) s.store.link(`discord-${v}`, v, v, NOW - 30 * DAY);
+  s.store.remove('m1', NOW - 60, NOW + 14 * DAY);
+  s.store.remove('s1', NOW - 60, NOW + 14 * DAY);
+
+  s.collect();
+  assert.deepEqual(
+    s.notices('dm:discord-a').map(n => n.key),
+    [],
+    'off unless asked for',
+  );
+  s.collect({ dms: { since: NOW - DAY } });
+  const sent = s.store.db.prepare("SELECT key, target FROM notices WHERE target LIKE 'dm:%' ORDER BY id").all();
+  assert.deepEqual(
+    sent.map(n => `${n.key} ${n.target}`),
+    [`leaving-dm:m1:${NOW - 60}:a dm:discord-a`, `leaving-dm:s1:${NOW - 60}:a dm:discord-a`],
+  );
+  const [dm] = s.notices('dm:discord-a');
+  assert.equal(dm.embeds[0].title, 'Leaving Soon: Dull Movie (2020) · Movies');
+  assert.match(
+    dm.embeds[0].description,
+    /^You started this, and it leaves \w{3} \d+ \w{3}\. Finish it before then, or use \/object/,
+  );
+  assert.match(dm.embeds[0].description, /\/reminders off/);
+
+  // Its last day: again, unless they finished it since.
+  played('a', 's1', true, 1);
+  played('a', 'm1', true, 1);
+  s.collect({ dms: { since: NOW - DAY }, now: NOW + 13 * DAY + 60 });
+  const last = s.notices('dm:discord-a').filter(n => n.key.startsWith('lastday-dm:'));
+  assert.deepEqual(
+    last.map(n => n.key),
+    [`lastday-dm:s1:${NOW + 14 * DAY}:a`],
+  );
+  assert.equal(last[0].embeds[0].title, 'Last day: Long Show · TV Shows');
+  assert.equal(s.collect({ dms: { since: NOW - DAY }, now: NOW + 13 * DAY + 120 }), 0, 'once');
+});
+
+test('Leaving Soon DMs: nothing for what was Removed before they were on, and only the last-day one on its last day', () => {
+  const s = setup();
+  s.store.upsertPlays([{ id: 'p', voterId: 'a', titleKey: 'm1', started: NOW - DAY, seconds: 600, watched: false }]);
+  s.store.link('discord-a', 'a', 'a', NOW - DAY);
+  s.store.remove('m1', NOW - 2 * DAY, NOW + 12 * DAY);
+  s.collect({ dms: { since: NOW - DAY } });
+  assert.deepEqual(s.notices('dm:discord-a'), []);
+  s.store.remove('m2', NOW - 60, NOW + DAY - 60); // a one-day Leaving Soon
+  s.store.upsertPlays([{ id: 'q', voterId: 'a', titleKey: 'm2', started: NOW - DAY, seconds: 600, watched: false }]);
+  s.collect({ dms: { since: NOW - DAY } });
+  assert.deepEqual(
+    s.notices('dm:discord-a').map(n => n.key.split(':')[0]),
+    ['lastday-dm'],
   );
 });
 

@@ -50,6 +50,22 @@ const COMMANDS = [
     ],
   },
   { name: 'mine', description: 'Your Downvotes, Objections, Problem Reports and asks' },
+  {
+    name: 'reminders',
+    description: 'A DM when something you started is Leaving Soon, and on its last day',
+    options: [
+      {
+        type: 3,
+        name: 'set',
+        description: 'On or off',
+        required: true,
+        choices: [
+          { name: 'On', value: 'on' },
+          { name: 'Off', value: 'off' },
+        ],
+      },
+    ],
+  },
   { name: 'link', description: 'Connect your Discord account to Media Review' },
   { name: 'unlink', description: 'Disconnect your Discord account from Media Review' },
 ];
@@ -177,6 +193,14 @@ async function command(ctx, i) {
     return "Your Plex account no longer has access to this server, so Media Review can't take commands from it.";
   const isOwner = !store.voter(voterId);
   if (name === 'mine') return mine(ctx, voterId);
+  if (name === 'reminders') {
+    if (isOwner) return "Reminders are for friends: you decide what's Leaving Soon.";
+    const on = opt(i, 'set') !== 'off';
+    store.setReminders(voterId, on);
+    return on
+      ? "Reminders on: you'll get a DM when something you started is Leaving Soon, and on its last day."
+      : 'Reminders off. Turn them back on with /reminders on.';
+  }
   if (isOwner)
     return 'You are the Owner: you decide on the Review Queue in Media Review, and do not Downvote, object or report.';
 

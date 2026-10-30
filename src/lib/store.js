@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS problem_reporters (
 `;
 
 /**
- * @typedef {{ plex_id: string, username: string, thumb: string | null, removed_at: number | null }} VoterRow
+ * @typedef {{ plex_id: string, username: string, thumb: string | null, removed_at: number | null,
+ *   reminders: number }} VoterRow
  * @typedef {{ rating_key: string, kind: 'movie' | 'show', title: string, year: number | null,
  *   thumb: string | null, library: string | null, library_key: string | null,
  *   tmdb_id: string | null, tvdb_id: string | null }} TitleRow
@@ -125,6 +126,7 @@ function openStore(file) {
   addColumn('review_queue', 'sent_back', 'INTEGER NOT NULL DEFAULT 0'); // back by Objections
   addColumn('leaving_soon', 'objections_closed', 'INTEGER NOT NULL DEFAULT 0'); // its second Leaving Soon
   addColumn('voters', 'removed_at', 'INTEGER'); // the server is no longer shared with them: their votes don't count
+  addColumn('voters', 'reminders', 'INTEGER NOT NULL DEFAULT 1'); // Leaving Soon DMs for what they started; 0 = off
   addColumn('problem_reporters', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
   addColumn('bring_back_asks', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
   // Titles deleted before holding back existed are held back too, once.
@@ -185,6 +187,28 @@ function openStore(file) {
     setRemoved: (plexId, at) => void db.prepare('UPDATE voters SET removed_at = ? WHERE plex_id = ?').run(at, plexId),
     /** @param {string} plexId */
     dropSessionsOf: plexId => void db.prepare('DELETE FROM sessions WHERE plex_id = ?').run(plexId),
+    /** @param {string} plexId @param {boolean} on */
+    setReminders: (plexId, on) =>
+      void db.prepare('UPDATE voters SET reminders = ? WHERE plex_id = ?').run(on ? 1 : 0, plexId),
+    // Who has played some of a Title since `since` and still has access and reminders on: whether they watched any
+    // of it to the end, and whether they ever Downvoted it (now, or when it was Removed).
+    /** @param {string} titleKey @param {number} since
+     *  @returns {Array<{ voter_id: string, finished: number, downvoted: number }>} */
+    startedBy: (titleKey, since) =>
+      /** @type {any} */ (
+        db
+          .prepare(
+            `SELECT p.voter_id, MAX(p.watched) AS finished,
+               EXISTS (SELECT 1 FROM downvotes d WHERE d.title_key = p.title_key AND d.voter_id = p.voter_id)
+               OR EXISTS (SELECT 1 FROM queued_downvotes q WHERE q.title_key = p.title_key AND q.voter_id = p.voter_id)
+               OR EXISTS (SELECT 1 FROM title_votes t WHERE t.title_key = p.title_key AND t.voter_id = p.voter_id
+                          AND t.kind = 'downvote') AS downvoted
+             FROM plays p JOIN voters v ON v.plex_id = p.voter_id
+             WHERE p.title_key = ? AND p.started >= ? AND v.removed_at IS NULL AND v.reminders = 1
+             GROUP BY p.voter_id ORDER BY p.voter_id`,
+          )
+          .all(titleKey, since)
+      ),
     /** @param {string} plexId @returns {VoterRow | undefined} */
     voter: plexId => /** @type {any} */ (db.prepare('SELECT * FROM voters WHERE plex_id = ?').get(plexId)),
 

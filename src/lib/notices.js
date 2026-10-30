@@ -18,6 +18,9 @@ const problems = require('./problems');
 
 const DAY = 86400;
 const HOUR = 3600;
+// "Started it": played some of it in this long.
+const STARTED_DAYS = 90;
+const OFF = 'Turn these reminders off with /reminders off, or on your Media Review page.';
 const COLOR = { leaving: 0xd03b3b, reminder: 0xd03b3b, kept: 0x0ca30c, back: 0x9b7fe6, resolved: 0x4a90e2 };
 
 // A poster Discord can fetch without signing in: only for a Title Media Review announced, by a signed link.
@@ -64,7 +67,8 @@ const num = n => String(Math.round(n * 100) / 100);
 /**
  * Record a notice for everything that happened since the channels were set, and isn't recorded yet.
  * @param {{ store: Store, now: number, since: number, announce: boolean, owner: boolean, publicUrl: string | null,
- *   tz?: string, health?: Health }} ctx announce/owner: whether that channel is set
+ *   tz?: string, health?: Health, dms?: { since: number } | null }} ctx announce/owner: whether that channel is set;
+ *   dms: Leaving Soon DMs to friends who started the Title, for what happened since `since` (off when not given)
  * @returns {number} how many were recorded
  */
 function collect(ctx) {
@@ -103,6 +107,36 @@ function collect(ctx) {
           },
         ],
       });
+    // Privately, to friends who started it and haven't finished it (any episode, for a show) and didn't Downvote
+    // it: when it becomes Leaving Soon, and on its last day. On the last day only the last-day one.
+    if (ctx.dms) {
+      const lastDay = now >= l.ends_at - DAY && now < l.ends_at;
+      const due = lastDay
+        ? l.ends_at - DAY >= ctx.dms.since && { key: `lastday-dm:${l.title_key}:${l.ends_at}`, last: true }
+        : now < l.ends_at &&
+          l.removed_at >= ctx.dms.since && { key: `leaving-dm:${l.title_key}:${l.removed_at}`, last: false };
+      const show = store.title(l.title_key)?.kind === 'show';
+      if (due)
+        for (const v of store.startedBy(l.title_key, now - STARTED_DAYS * DAY)) {
+          if (v.downvoted || (v.finished && !show)) continue;
+          const link = store.linkFor(v.voter_id);
+          if (!link) continue;
+          add(`${due.key}:${v.voter_id}`, `dm:${link.discord_id}`, {
+            embeds: [
+              {
+                title: `${due.last ? 'Last day' : 'Leaving Soon'}: ${t.embedTitle}`,
+                description: `${
+                  due.last
+                    ? 'You started this, and it leaves tonight. Last chance to finish it.'
+                    : `You started this, and it leaves ${date(l.ends_at, ctx.tz)}. Finish it before then${l.objections_closed ? '.' : ', or use /object to ask the Owner to keep it.'}`
+                }\n\n${OFF}`,
+                color: COLOR.leaving,
+                ...(t.thumbnail ? { thumbnail: t.thumbnail } : {}),
+              },
+            ],
+          });
+        }
+    }
     if (l.delete_error && l.ends_at >= since)
       owner(
         `failed:${l.title_key}:${l.ends_at}`,
