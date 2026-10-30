@@ -239,6 +239,15 @@ function discordForm(editing) {
     field('Your channel', owner, 'Review Queue, send-backs, reports, asks, failures. Make it one only you can see.'),
   );
   channelFields.hidden = true;
+  // Leaving Soon DMs to friends who started it: on unless the Owner turns them off. Each friend can too.
+  const dms = Object.assign(el('input', ''), { type: 'checkbox', checked: S.discord?.leavingDms !== false });
+  const dmsField = el('label', 'check');
+  dmsField.append(
+    dms,
+    document.createTextNode(
+      ' DM friends when something they started is Leaving Soon, and on its last day (if they connected Discord with /link)',
+    ),
+  );
   /** @param {any} r what Test answered: the channels of r.guildId */
   const showChannels = r => {
     for (const [select, current] of [
@@ -318,6 +327,7 @@ function discordForm(editing) {
         guildId: guild.value,
         announceChannel: announce.value,
         ownerChannel: owner.value,
+        leavingDms: dms.checked,
       });
       modal.close();
       await load();
@@ -336,6 +346,7 @@ function discordForm(editing) {
     field('Bot token', token, editing ? `@${S.discord.botName} in ${S.discord.guildName}` : undefined),
     guildField,
     channelFields,
+    dmsField,
     actions,
   );
   openModal(editing ? 'Discord' : 'Add Discord', [form]);

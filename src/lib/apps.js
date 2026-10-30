@@ -15,8 +15,10 @@ const { seerr } = require('./seerr');
 /** @typedef {{ url: string, token: string, machineId: string, name: string }} PlexConfig */
 /**
  * @typedef {{ token: string, guildId: string, guildName: string, botName: string, announceChannel?: string,
- *   ownerChannel?: string, noticesFrom?: number }} DiscordConfig
+ *   ownerChannel?: string, noticesFrom?: number, leavingDms?: boolean, dmsFrom?: number }} DiscordConfig
  *   noticesFrom: when channels were first set; nothing that happened before is announced
+ *   leavingDms: DM friends what they started is Leaving Soon (off only when false); dmsFrom: when the bot was first
+ *   set up, so nothing from before is DMed
  */
 
 // The apps on the Settings page, in order. Plex is set up separately, by signing in.

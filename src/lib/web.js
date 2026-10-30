@@ -323,6 +323,7 @@ function createApp({
               guildName: all.discord.guildName,
               announceChannel: all.discord.announceChannel ?? '',
               ownerChannel: all.discord.ownerChannel ?? '',
+              leavingDms: all.discord.leavingDms !== false,
               status: discordStatus(),
             }
           : null,
@@ -420,6 +421,9 @@ function createApp({
         ownerChannel,
         // Only what happens from now on is announced; setting channels for the first time doesn't post the past.
         noticesFrom: had && all.discord?.noticesFrom ? all.discord.noticesFrom : now(),
+        leavingDms: body.leavingDms !== false,
+        // Leaving Soon DMs: from when the bot was first saved (an older one: from its channels).
+        dmsFrom: all.discord?.dmsFrom ?? all.discord?.noticesFrom ?? now(),
       });
       appsChanged();
       log(`settings: Discord saved (${bot.username} in ${guild.name})`);
@@ -688,7 +692,16 @@ function createApp({
         enabled: !!apps.read().discord,
         guildName: apps.read().discord?.guildName ?? null,
         linked: l ? { name: l.discord_name, at: new Date(l.linked_at * 1000).toISOString() } : null,
+        // Leaving Soon DMs: whether the Owner has them on, and whether this friend does.
+        reminders:
+          s.isOwner || apps.read().discord?.leavingDms === false ? null : store.voter(s.plexId)?.reminders !== 0,
       });
+    }
+    if (m === 'PUT' && p === '/api/discord/reminders') {
+      if (s.isOwner) return json(res, 400, { error: 'Reminders are for friends' });
+      const on = (await readJson(req)).on !== false;
+      store.setReminders(s.plexId, on);
+      return json(res, 200, { reminders: on });
     }
     if (m === 'POST' && p === '/api/discord/unlink') {
       const was = store.unlink(s.plexId);

@@ -8,6 +8,7 @@ number, a fix the last one.
 
 ### Added
 
+- Leaving Soon DMs: a friend who connected Discord hears privately when something they started and haven't finished is Leaving Soon, and again on its last day. "Started" means played in the last 90 days; for a show, any episode. Not to anyone who Downvoted it. Each friend can turn them off (`/reminders off`, or on their page), and the Owner for everyone (Settings → Discord). The bot no longer needs a channel to send DMs.
 - Media Review's problems show in Media Ops' Errors & warnings, and Media Ops notifies about them like any other app: a background job that failed its last run, a Title that couldn't be deleted overnight, no sync for over an hour, or the Discord bot not connected for five minutes (`GET /api/v1/health`).
 
 ## [0.9.0] - 2026-10-30

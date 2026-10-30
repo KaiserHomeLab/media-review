@@ -626,6 +626,17 @@ test("Connecting Discord: the bot's one-time link connects the signed-in Plex ac
 
   const mine = await (await req('/api/discord', { cookie: alice })).json();
   assert.equal(mine.linked.name, 'alice#1');
+  assert.equal(mine.reminders, true, 'Leaving Soon DMs: on unless they turn them off');
+  const turn = (/** @type {boolean} */ on) =>
+    req('/api/discord/reminders', {
+      method: 'PUT',
+      cookie: alice,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ on }),
+    });
+  assert.deepEqual(await (await turn(false)).json(), { reminders: false });
+  assert.equal(store.voter('a')?.reminders, 0);
+  assert.equal((await (await req('/api/discord', { cookie: alice })).json()).reminders, false);
   assert.equal((await (await req('/api/discord', { cookie: bob })).json()).linked, null);
   assert.deepEqual(await (await post(alice, '/api/discord/unlink')).json(), { unlinked: true });
   assert.equal(store.linkOf('d-alice'), undefined);
