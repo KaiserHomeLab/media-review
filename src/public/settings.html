@@ -32,6 +32,26 @@
       </p>
       <p class="notice error" id="error" hidden></p>
 
+      <section class="card" id="status-card" hidden>
+        <h2>Status <span class="count" id="status-when"></span></h2>
+        <p class="muted hint">What Media Review last did on its own. It syncs every few minutes, and deletes overnight.</p>
+        <ul class="status-list" id="status-list"></ul>
+        <div class="row">
+          <button class="btn" type="button" id="sync-now">Sync now</button>
+          <button class="btn ghost" type="button" id="diag-run">Run diagnostics</button>
+          <span class="result" id="status-result"></span>
+        </div>
+        <div id="diag" hidden>
+          <h3 class="sub-h">Diagnostics</h3>
+          <ul class="status-list" id="diag-list"></ul>
+          <div class="row">
+            <button class="btn small" type="button" id="diag-copy">Copy short report</button>
+            <span class="muted">No keys, tokens, IP addresses or names: safe to paste into a GitHub issue.</span>
+          </div>
+          <pre class="report" id="diag-report"></pre>
+        </div>
+      </section>
+
       <section class="card" id="apps-card" hidden>
         <h2>Apps <span class="count" id="apps-count"></span></h2>
         <p class="muted hint">Plex was linked at first setup. Add Tautulli for play history, Radarr and Sonarr if what you Remove should be deleted, Seerr to hold back what was deleted, and Discord for the bot. Click an app to change it.</p>

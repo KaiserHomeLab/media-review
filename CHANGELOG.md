@@ -8,6 +8,10 @@ number, a fix the last one.
 
 ### Added
 
+- **Settings → Status**: what Media Review last did on its own (the sync with Plex and Tautulli, who
+  has access, overnight deletion, holding back in Seerr, the Plex collection, Discord), each with a
+  green or red dot and what went wrong. **Sync now** runs it straight away. **Run diagnostics** checks
+  every app live, and **Copy short report** is safe to paste into a GitHub issue.
 - Someone you stop sharing your Plex server with is signed out of Media Review within one sync,
   and their Discord commands stop working. Their Downvotes and Objections stop counting, and count
   again if you share with them again. Media Review asks plex.tv after every sync; if plex.tv can't
@@ -73,6 +77,8 @@ number, a fix the last one.
 
 ### Fixed
 
+- One background job failing (for example Plex refusing a Leaving Soon collection change) no
+  longer stops the ones after it, like the app checks and Discord messages.
 - The Owner's pages said "1 days ago"; Building up's "5.31 of 2.65 weight needed" now reads
   "5.31 weight, 2.65 needed". Settings' hint mentions Seerr and Discord.
 - Unraid's Docker page shows Media Review's icon. The template and the image now name it. On an

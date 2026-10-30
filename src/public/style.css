@@ -1253,3 +1253,57 @@ img.logo.custom {
   font-weight: 400;
   margin-left: 4px;
 }
+
+/* ------------------------------------------------------------------ Settings: status and diagnostics */
+.status-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.status-list li {
+  display: grid;
+  grid-template-columns: 10px 170px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.status-list li:first-child {
+  border-top: 0;
+}
+.status-list .dot {
+  align-self: center;
+}
+.status-list .dot.wait {
+  background: var(--text-muted);
+}
+.status-list b {
+  font-weight: 600;
+}
+.status-list .what {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .status-list li {
+    grid-template-columns: 10px minmax(0, 1fr);
+  }
+  .status-list .what {
+    grid-column: 2;
+  }
+}
+.report {
+  font: 12px/1.5 var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+}

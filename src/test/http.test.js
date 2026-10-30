@@ -29,3 +29,11 @@ test('an app that never answers is reported as a timeout', async () => {
     message: "Sonarr didn't answer within 0.2 seconds",
   });
 });
+
+test('the diagnostics report hides IP addresses and email addresses', () => {
+  const { redact } = require('../lib/diagnostics');
+  assert.equal(
+    redact('Tautulli at 192.168.1.20:8181 and fe80::1:2:3:4, mail me@example.com'),
+    'Tautulli at •.•.•.•:8181 and •:•:•, mail •@•',
+  );
+});

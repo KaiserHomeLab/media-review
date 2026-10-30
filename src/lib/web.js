@@ -30,6 +30,8 @@ const { rest: discordRest } = require('./discord');
 const { LINK_MINUTES } = require('./bot');
 const { posterOk } = require('./notices');
 const { appearance, renderPage, LOGO_MAX } = require('./appearance');
+const { jobStatus } = require('./status');
+const { runChecks, report } = require('./diagnostics');
 const { APPS, cleanUrl, probe: probeApp } = require('./apps');
 const { sampleKind, sampleMinutes } = require('./rules');
 const { toForm, fromForm } = require('./rule-settings');
@@ -80,7 +82,9 @@ async function readJson(req, max = 64 * 1024) {
  *   setupDone?: () => void, appsChanged?: () => void, probe?: typeof probeApp, fetch?: typeof fetch,
  *   rules?: ReturnType<typeof import('./rule-settings').ruleSettings>,
  *   seerr?: () => import('./seerr').Seerr | null,
- *   discordStatus?: () => { connected: boolean, error: string | null, postError?: string | null } | null }} ctx
+ *   discordStatus?: () => { connected: boolean, error: string | null, postError?: string | null } | null,
+ *   jobs?: import('./status').JobStatus, syncNow?: () => Promise<void> }} ctx
+ *   jobs: what the background jobs last did; syncNow: run them now
  *   seerr: Seerr as set up on the Settings page right now, or null
  *   rules: where the Owner's rules are saved; `settings` is then rules.values, read live
  *   setupCode: the one-time code printed in the log until first setup is done
@@ -104,6 +108,8 @@ function createApp({
   rules,
   seerr = () => null,
   discordStatus = () => null,
+  jobs = jobStatus(store),
+  syncNow = async () => {},
 }) {
   // The public address: from the container (tests) or the Settings page, read fresh each time.
   const base = () => (publicUrl ?? apps.read().publicUrl ?? '').replace(/\/+$/, '') || null;
@@ -718,6 +724,18 @@ function createApp({
         heldBackDecisions(req, res, m, p.slice('/api/owner'.length), 'Media Review');
       if (handled) return handled;
       if (p === '/api/owner/rules') return rulesRoute(req, res, m);
+      // Status: what the background jobs last did; Sync now; Diagnostics, as in Media Ops.
+      if (m === 'GET' && p === '/api/owner/status')
+        return json(res, 200, { jobs: jobs.read(), discord: discordStatus(), now: now() });
+      if (m === 'POST' && p === '/api/owner/sync') {
+        log('Sync now (Settings)');
+        await syncNow();
+        return json(res, 200, { jobs: jobs.read(), discord: discordStatus(), now: now() });
+      }
+      if (m === 'POST' && p === '/api/owner/diagnostics') {
+        const checks = await runChecks({ apps, plex, probe, fetch: f });
+        return json(res, 200, { checks, report: report(jobs.read(), checks, now()) });
+      }
       if (p === '/api/owner/appearance' || p === '/api/owner/appearance/logo') return appearanceRoute(req, res, m, p);
       if (p === '/api/owner/settings' || p.startsWith('/api/owner/settings/'))
         return settingsRoute(req, res, m, p.slice('/api/owner/settings'.length));
