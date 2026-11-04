@@ -78,6 +78,7 @@ const ERRORS = /** @type {Record<string, string>} */ ({
   'not-downvoted': "You hadn't Downvoted this.",
   downvoted: "You Downvoted this, so you can't also object to it going.",
   'objections-closed': 'This was sent back once already, so it takes no Objections this time.',
+  'being-deleted': "It's being deleted right now: tonight's deletion has already started on it.",
   'already-objected': 'You already objected to this.',
   'not-leaving': "This isn't Leaving Soon.",
   'pick-a-reason': "Pick what's wrong.",

@@ -52,12 +52,19 @@ async function start() {
     return;
   }
   $('text').textContent =
-    `Connect the Discord account ${link.discordName ?? ''} to ${me.username} on Plex? Then the bot's commands work as you, under the same rules as here.`;
+    `Connect the Discord account ${link.discordName ?? ''} to ${me.username} on Plex? Then the bot's commands work as you, under the same rules as here.${link.replaces ? ` This replaces ${link.replaces}, which is connected now.` : ''}`;
+  // A link anyone else made would let them vote as you: say so before the button.
+  $('warn').textContent =
+    "Only connect a link you made yourself, with /link, just now. If someone sent you this link, don't: they could Downvote and object as you.";
+  $('warn').hidden = false;
   $('connect').hidden = false;
   $('connect').addEventListener('click', async () => {
     /** @type {HTMLButtonElement} */ ($('connect')).disabled = true;
     try {
-      await api(`/api/discord/link/${encodeURIComponent(token)}`, { method: 'POST', body: '{}' });
+      await api(`/api/discord/link/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        body: JSON.stringify({ replace: !!link.replaces }),
+      });
       try {
         sessionStorage.removeItem(KEY);
       } catch {}

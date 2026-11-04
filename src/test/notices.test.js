@@ -313,7 +313,7 @@ test('deliver: oldest first; Discord down keeps the rest for next time; one bad 
   const api = /** @type {any} */ ({
     call: async (/** @type {string} */ method, /** @type {string} */ path, /** @type {any} */ body) => {
       if (path === '/users/@me/channels')
-        throw new Error('Discord answered HTTP 403: Cannot send messages to this user');
+        throw Object.assign(new Error('Discord answered HTTP 403: Cannot send messages to this user'), { status: 403 });
       if (down) throw new Error("couldn't reach Discord (ECONNREFUSED)");
       posted.push(`${path} ${body.content}`);
       assert.deepEqual(body.allowed_mentions, { parse: [] }, 'never pings anyone');
@@ -336,5 +336,49 @@ test('deliver: oldest first; Discord down keeps the rest for next time; one bad 
     [],
     'the DM is given up after its third try',
   );
-  assert.equal(logs.length, 1, 'said once, not every minute');
+  assert.deepEqual(
+    logs,
+    [
+      "Discord: couldn't post (couldn't reach Discord (ECONNREFUSED)); trying again in a minute",
+      'Discord: gave up on a message to a DM (Discord answered HTTP 403: Cannot send messages to this user)',
+    ],
+    'said once, not every minute',
+  );
+});
+
+test('deliver: a message Discord refuses holds up only its own channel, is given up after 3 tries, and messages fit', async () => {
+  const s = setup();
+  s.store.addNotice('a1', 'announce', { content: 'to a deleted channel' }, NOW);
+  s.store.addNotice('a2', 'announce', { content: 'after it' }, NOW);
+  s.store.addNotice('o1', 'owner', { content: 'x'.repeat(2500) }, NOW);
+  s.store.addNotice('d1', 'dm:d-a', { embeds: [{ title: 't'.repeat(300), description: 'hi' }] }, NOW);
+  /** @type {any[]} */
+  const posted = [];
+  const api = /** @type {any} */ ({
+    call: async (/** @type {string} */ method, /** @type {string} */ path, /** @type {any} */ body) => {
+      if (path === '/users/@me/channels') return { id: 'DM' };
+      if (path === '/channels/A/messages' && body.content === 'to a deleted channel')
+        throw Object.assign(new Error('Discord answered HTTP 404: Unknown Channel'), { status: 404 });
+      posted.push([path, body]);
+      return {};
+    },
+  });
+  /** @param {number} t */
+  const run = t => N.deliver({ store: s.store, api, channels: { announce: 'A', owner: 'O' }, now: t, log: () => {} });
+  assert.deepEqual(await run(NOW), { sent: 2, error: 'Discord answered HTTP 404: Unknown Channel' });
+  assert.deepEqual(
+    posted.map(p => p[0]),
+    ['/channels/O/messages', '/channels/DM/messages'],
+    "the Owner's message and the DM go; the announcement after the refused one waits, in order",
+  );
+  assert.equal(posted[0][1].content.length, 2000);
+  assert.equal(posted[1][1].embeds[0].title.length, 256);
+  await run(NOW + 60);
+  await run(NOW + 120); // its third try: given up
+  assert.deepEqual(
+    posted.map(p => p[0]),
+    ['/channels/O/messages', '/channels/DM/messages', '/channels/A/messages'],
+  );
+  assert.equal(posted[2][1].content, 'after it');
+  assert.deepEqual(s.store.unsentNotices(), []);
 });

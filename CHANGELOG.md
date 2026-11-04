@@ -6,6 +6,18 @@ number, a fix the last one.
 
 ## [Unreleased]
 
+### Security
+
+- Signing in with Plex can no longer be taken over by someone who knows or guesses the number of a recent sign-in. The browser's cookie now holds a random value, Media Review keeps the plex.tv pin itself, and each sign-in works once, for 15 minutes.
+- Connecting Discord with a link someone else made is harder to fall for. The page warns not to connect a link you didn't make yourself. An existing connection is replaced only after the page says so, and the old Discord account gets a DM about it.
+
+### Fixed
+
+- A Title kept, or sent back by Objections, while tonight's deletions are running is no longer deleted. While a Title is actually being deleted, Keep and Objections on it are refused with a message saying so.
+- One Discord message that keeps failing (for a deleted channel, a channel the bot lost access to, or one over Discord's length limit) no longer blocks every later message. Messages are trimmed to Discord's limits. One Discord refuses is given up after 3 tries, and holds up only later messages to the same place.
+- Plex dropping a poster download halfway no longer crashes Media Review.
+- A cookie set by another app on the same host no longer locks everyone out with errors.
+
 ### Added
 
 - Title history on the Review Queue page: search any Title, deleted ones too, and see where it stands and everything that happened to it, newest first. That covers Downvotes, the Review Queue, each Keep and Remove with who Downvoted and objected, deletion, Problem Reports, asks to bring it back, and who watched it. A Keep now records who Downvoted and objected, as a Remove does, so it appears in the history (from this version on).

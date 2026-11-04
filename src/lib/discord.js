@@ -55,7 +55,11 @@ function rest(cfg) {
     }
     if (!res.ok) {
       const detail = await res.json().catch(() => null);
-      throw new Error(`Discord answered HTTP ${res.status}${detail?.message ? `: ${detail.message}` : ''}`);
+      // The status goes with it: a 4xx is about this request (a deleted channel, a message too long), not Discord.
+      throw Object.assign(
+        new Error(`Discord answered HTTP ${res.status}${detail?.message ? `: ${detail.message}` : ''}`),
+        { status: res.status },
+      );
     }
     return res.status === 204 ? null : res.json();
   };

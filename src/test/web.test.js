@@ -22,8 +22,10 @@ const ACCOUNTS =
     5: { plexId: 'c', username: 'carol', access: 'shared' },
     6: { plexId: 'd', username: 'dave', access: 'shared' },
   });
+let nextPin = 2;
 const fakePlex = /** @type {any} */ ({
-  createPin: async () => ({ id: 2, code: 'CODE' }),
+  // The pin a test signs in with (see signIn): plex.tv hands out the pin, the browser never names it.
+  createPin: async () => ({ id: nextPin, code: 'CODE' }),
   authUrl: (/** @type {string} */ code, /** @type {string} */ fwd) =>
     `https://app.plex.tv/auth#?code=${code}&forwardUrl=${fwd}`,
   pinToken: async (/** @type {number} */ id) => (ACCOUNTS[id] ? `token-${id}` : null),
@@ -35,7 +37,7 @@ const fakePlex = /** @type {any} */ ({
   ],
 });
 
-/** @param {{ publicUrl?: string, leavingChanged?: () => void, seerr?: () => any, updates?: any }} [extra] */
+/** @param {{ publicUrl?: string, leavingChanged?: () => void, seerr?: () => any, updates?: any, plex?: any }} [extra] */
 async function setup(extra = {}) {
   const logs = /** @type {string[]} */ ([]);
   const store = openStore(':memory:');
@@ -73,8 +75,26 @@ async function setup(extra = {}) {
 
   // Sign in as the account behind a pin, and return its session cookie (or the redirect location).
   /** @param {number} pin */
-  const signIn = async pin => {
-    const res = await req('/auth/plex/callback', { cookie: `mr_pin=${pin}` });
+  let signing = Promise.resolve();
+  const signIn = (/** @type {number} */ pin) => {
+    const run = signing.then(() => signInAs(pin));
+    signing = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  };
+  // Through plex.tv the real way: start, then come back with the cookie that start set. One at a time.
+  /** @param {number} pin */
+  const signInAs = async pin => {
+    nextPin = pin;
+    const start = await req('/auth/plex');
+    const pinCookie =
+      start.headers
+        .getSetCookie()
+        .find(c => c.startsWith('mr_pin='))
+        ?.split(';')[0] ?? '';
+    const res = await req('/auth/plex/callback', { cookie: pinCookie });
     const set = res.headers.getSetCookie().find(c => c.startsWith('mr_session=') && !c.startsWith('mr_session=;'));
     return { location: res.headers.get('location'), cookie: set ? set.split(';')[0] : '' };
   };
@@ -93,7 +113,35 @@ test('sign-in starts at plex.tv and comes back to the callback', async () => {
     String(res.headers.get('location')),
     /^https:\/\/app\.plex\.tv\/auth#\?code=CODE&forwardUrl=http:\/\/review\.example\/auth\/plex\/callback$/,
   );
-  assert.match(String(res.headers.getSetCookie()[0]), /^mr_pin=2; .*HttpOnly; SameSite=Lax/);
+  assert.match(String(res.headers.getSetCookie()[0]), /^mr_pin=[\w-]{32}; .*HttpOnly; SameSite=Lax/);
+});
+
+test('sign-in: the cookie never names a plex.tv pin, and each sign-in works once', async () => {
+  const { req, store } = await setup();
+  nextPin = 1; // the Owner
+  const start = await req('/auth/plex');
+  const pinCookie = String(start.headers.getSetCookie()[0]).split(';')[0];
+  assert.doesNotMatch(pinCookie, /^mr_pin=1$/);
+  // Someone who knows (or guesses) the pin id gets nowhere.
+  for (const guess of ['mr_pin=1', 'mr_pin=2', 'mr_pin=100%', 'mr_pin=']) {
+    const r = await req('/auth/plex/callback', { cookie: guess });
+    assert.equal(r.headers.get('location'), '/?signin=failed', guess);
+  }
+  const ok = await req('/auth/plex/callback', { cookie: pinCookie });
+  assert.ok(
+    ok.headers.getSetCookie().some(c => /^mr_session=[\w-]+;/.test(c)),
+    'the real one signs in',
+  );
+  const again = await req('/auth/plex/callback', { cookie: pinCookie });
+  assert.equal(again.headers.get('location'), '/?signin=failed', 'once');
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM sessions').get()?.n, 1);
+});
+
+test('a cookie that is not ours to decode (another app on this host) breaks nothing', async () => {
+  const { req, signIn } = await setup();
+  const { cookie } = await signIn(2);
+  const res = await req('/api/me', { cookie: `other=100%; ${cookie}` });
+  assert.equal(res.status, 200);
 });
 
 test('an account the server is not shared with cannot sign in', async () => {
@@ -218,6 +266,24 @@ test('Media Ops gets posters through the API key, not a Plex token', async () =>
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('content-type'), 'image/jpeg');
   assert.equal(await res.text(), 'img');
+});
+
+test('Plex dropping a poster halfway ends that response, and the server carries on', async () => {
+  const broken = () =>
+    new Response(
+      new ReadableStream({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('half an im'));
+          c.error(new Error('upstream reset'));
+        },
+      }),
+      { headers: { 'content-type': 'image/jpeg' } },
+    );
+  const { req, signIn, logs } = await setup({ plex: { ...fakePlex, poster: async () => broken() } });
+  const owner = (await signIn(1)).cookie;
+  await assert.rejects(async () => (await req('/poster/m1', { cookie: owner })).text(), 'that response is cut off');
+  assert.equal((await req('/api/me', { cookie: owner })).status, 200, 'still answering');
+  assert.ok(logs.some(l => /poster m1: upstream reset/.test(l)));
 });
 
 test('a Voter who has not Sampled a Title is told their Downvote will not count until they do', async () => {
@@ -615,6 +681,7 @@ test("Connecting Discord: the bot's one-time link connects the signed-in Plex ac
   assert.equal((await req('/api/discord/link/tok-for-alice-0001')).status, 401, 'signed in only');
   assert.deepEqual(await (await req('/api/discord/link/tok-for-alice-0001', { cookie: alice })).json(), {
     discordName: 'alice#1',
+    replaces: null,
   });
   assert.equal((await req('/api/discord/link/tok-too-old-000001', { cookie: alice })).status, 404, 'expired');
   assert.deepEqual(await (await post(alice, '/api/discord/link/tok-for-alice-0001')).json(), {
@@ -638,8 +705,29 @@ test("Connecting Discord: the bot's one-time link connects the signed-in Plex ac
   assert.equal(store.voter('a')?.reminders, 0);
   assert.equal((await (await req('/api/discord', { cookie: alice })).json()).reminders, false);
   assert.equal((await (await req('/api/discord', { cookie: bob })).json()).linked, null);
+  // A second /link from another Discord account: shown as replacing the first, and done only when the page says so.
+  store.addLinkToken('tok-for-alice-0002', 'd-alice2', 'alice#2', NOW - 60);
+  assert.deepEqual(await (await req('/api/discord/link/tok-for-alice-0002', { cookie: alice })).json(), {
+    discordName: 'alice#2',
+    replaces: 'alice#1',
+  });
+  assert.equal((await post(alice, '/api/discord/link/tok-for-alice-0002')).status, 409, 'not silently');
+  const replaced = await req('/api/discord/link/tok-for-alice-0002', {
+    method: 'POST',
+    cookie: alice,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ replace: true }),
+  });
+  assert.equal(replaced.status, 200);
+  assert.equal(store.linkFor('a')?.discord_id, 'd-alice2');
+  // Each account hears of it privately: the new one, and the one it replaced.
+  assert.deepEqual(
+    store.unsentNotices().map(n => n.target),
+    ['dm:d-alice', 'dm:d-alice2', 'dm:d-alice'],
+  );
+  assert.match(store.unsentNotices()[2].message, /disconnected from alice/);
   assert.deepEqual(await (await post(alice, '/api/discord/unlink')).json(), { unlinked: true });
-  assert.equal(store.linkOf('d-alice'), undefined);
+  assert.equal(store.linkOf('d-alice2'), undefined);
 });
 
 test('every Owner and Media Ops route answers once: nothing logs a second answer', async () => {
