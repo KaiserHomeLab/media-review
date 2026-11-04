@@ -6,6 +6,8 @@ number, a fix the last one.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-04
+
 ### Security
 
 - A saved API key is only reused at the same host. Change an app's address to a new host and its key must be typed again. The Owner's Plex token is no longer sent to a new Plex address before that address shows it is the same server.
