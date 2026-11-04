@@ -130,4 +130,4 @@ function renderPage(html, a) {
   return out;
 }
 
-module.exports = { appearance, renderPage, ACCENTS, THEMES, LOGO_MAX };
+module.exports = { appearance, renderPage, LOGO_MAX };

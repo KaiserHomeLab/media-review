@@ -12,19 +12,25 @@ const { rest: discordRest } = require('./discord');
 const VERSION = require('../package.json').version;
 
 /**
- * @typedef {{ name: string, ok: boolean, detail: string, ms: number }} Check
+ * @typedef {{ name: string, ok: boolean, detail: string, ms: number, public?: string }} Check
+ *   public: the detail without names (the Plex server's, the Discord server's), for the report
  * @param {{ apps: import('./apps').AppSettings, plex: ReturnType<typeof import('./plex').plex>,
  *   probe?: typeof probeApp, fetch?: typeof fetch }} deps
  * @returns {Promise<Check[]>}
  */
 async function runChecks({ apps, plex, probe = probeApp, fetch: f = fetch }) {
   const all = apps.read();
-  /** @param {string} name @param {() => Promise<string>} fn @returns {Promise<Check>} */
+  /** @param {string} name @param {() => Promise<string | { detail: string, public: string }>} fn @returns {Promise<Check>} */
   const check = async (name, fn) => {
     const t0 = performance.now();
     try {
-      const detail = await fn();
-      return { name, ok: true, detail, ms: Math.round(performance.now() - t0) };
+      const out = await fn();
+      return {
+        name,
+        ok: true,
+        ...(typeof out === 'string' ? { detail: out } : out),
+        ms: Math.round(performance.now() - t0),
+      };
     } catch (e) {
       return { name, ok: false, detail: e.message, ms: Math.round(performance.now() - t0) };
     }
@@ -37,7 +43,8 @@ async function runChecks({ apps, plex, probe = probeApp, fetch: f = fetch }) {
       const id = await fetchJson(f, 'Plex', join(p.url, '/identity'), { headers: { 'X-Plex-Token': p.token } });
       if (id?.MediaContainer?.machineIdentifier !== p.machineId)
         throw new Error('that address is a different Plex server');
-      return `${p.name}, version ${id.MediaContainer.version ?? '?'}`;
+      const version = `version ${id.MediaContainer.version ?? '?'}`;
+      return { detail: `${p.name}, ${version}`, public: version };
     }),
     check('plex.tv (who has access)', async () => {
       const ids = await plex.sharedWith(p.machineId);
@@ -63,7 +70,7 @@ async function runChecks({ apps, plex, probe = probeApp, fetch: f = fetch }) {
             await api.call('GET', `/channels/${id}`).catch(e => {
               throw new Error(`the bot can't see ${what} (${e.message})`, { cause: e });
             });
-        return `@${me.username} in ${d.guildName}`;
+        return { detail: `@${me.username} in ${d.guildName}`, public: 'connected, and can see its channels' };
       }),
     );
   if (all.publicUrl)
@@ -111,7 +118,7 @@ function report(status, checks, now) {
     lines.push(`- ${name}: ${s.ok ? 'ok' : `FAILED: ${s.error}`}, ${ago(s.at)}${extra}`);
   }
   lines.push('', 'Checks:');
-  for (const c of checks) lines.push(`- ${c.name}: ${c.ok ? 'ok' : 'FAILED'}, ${c.ms} ms: ${c.detail}`);
+  for (const c of checks) lines.push(`- ${c.name}: ${c.ok ? 'ok' : 'FAILED'}, ${c.ms} ms: ${c.public ?? c.detail}`);
   return redact(lines.join('\n'));
 }
 

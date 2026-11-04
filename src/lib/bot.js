@@ -362,4 +362,4 @@ function botRunner(ctx) {
   return { refresh, status: () => status, stop: () => running?.stop() };
 }
 
-module.exports = { COMMANDS, handle, command, autocomplete, botRunner, LINK_MINUTES };
+module.exports = { handle, command, autocomplete, botRunner, LINK_MINUTES };

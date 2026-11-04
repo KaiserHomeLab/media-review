@@ -367,7 +367,6 @@ module.exports = {
   withdrawObjection,
   remove,
   leavingSoon,
-  evaluate,
   evaluateAll,
   castDownvote,
   withdrawDownvote,

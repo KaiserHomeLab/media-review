@@ -268,4 +268,4 @@ function plex(cfg) {
   };
 }
 
-module.exports = { plex, xmlItems };
+module.exports = { plex };

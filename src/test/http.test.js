@@ -37,3 +37,25 @@ test('the diagnostics report hides IP addresses and email addresses', () => {
     'Tautulli at •.•.•.•:8181 and •:•:•, mail •@•',
   );
 });
+
+test('the short report leaves out the Plex and Discord server names the screen shows', () => {
+  const { report } = require('../lib/diagnostics');
+  const r = report(
+    {},
+    [
+      { name: 'Plex', ok: true, detail: "Kai's Tower, version 1.43.5", public: 'version 1.43.5', ms: 5 },
+      {
+        name: 'Discord',
+        ok: true,
+        detail: '@Media Review in Kai Home Lab',
+        public: 'connected, and can see its channels',
+        ms: 9,
+      },
+      { name: 'Radarr', ok: true, detail: 'version 5.27.5', ms: 4 },
+    ],
+    1_800_000_000,
+  );
+  assert.doesNotMatch(r, /Tower|Kai/);
+  assert.match(r, /- Plex: ok, 5 ms: version 1\.43\.5/);
+  assert.match(r, /- Radarr: ok, 4 ms: version 5\.27\.5/);
+});

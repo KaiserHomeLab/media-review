@@ -884,6 +884,12 @@ function openStore(file) {
       void db
         .prepare('INSERT INTO sessions (token, plex_id, is_owner, created_at) VALUES (?, ?, ?, ?)')
         .run(token, plexId, isOwner ? 1 : 0, now),
+    // Sign-ins and Discord link tokens past their time: they no longer work, so they needn't be kept.
+    /** @param {number} sessionsBefore @param {number} linksBefore */
+    pruneExpired: (sessionsBefore, linksBefore) => {
+      db.prepare('DELETE FROM sessions WHERE created_at < ?').run(sessionsBefore);
+      db.prepare('DELETE FROM link_tokens WHERE created_at < ?').run(linksBefore);
+    },
     /** @param {string} token @param {number} notBefore @returns {{ plexId: string, isOwner: boolean } | undefined} */
     session: (token, notBefore) => {
       const r = /** @type {any} */ (

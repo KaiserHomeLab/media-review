@@ -4,10 +4,12 @@
 // Backups: everything Media Review keeps is one SQLite database, so a backup is a consistent copy of it
 // (VACUUM INTO, safe while it runs). A copy each night goes to <data>/backups, keeping the newest 7; the
 // Owner can also download one from Settings. It holds the app keys and tokens too, so keep it private.
+// Restored, everyone signs in again: sign-ins aren't in it.
 // Restoring: stop the container, put a copy back as media-review.db, start it again.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
 
 const KEEP = 7;
 const HOUR = 3600;
@@ -19,9 +21,20 @@ const day = t => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// A copy of the database at `file`, which must not exist yet.
+// A copy of the database at `file`, which must not exist yet, readable by its owner only. Sign-ins and Discord
+// link tokens are left out: a copy that leaks shouldn't let anyone in (everyone just signs in again after a
+// restore).
 /** @param {import('./store').Store} store @param {string} file */
-const copyTo = (store, file) => void store.db.prepare('VACUUM INTO ?').run(file);
+const copyTo = (store, file) => {
+  store.db.prepare('VACUUM INTO ?').run(file);
+  fs.chmodSync(file, 0o600);
+  const copy = new DatabaseSync(file);
+  try {
+    copy.exec('DELETE FROM sessions; DELETE FROM link_tokens; VACUUM;');
+  } finally {
+    copy.close();
+  }
+};
 
 /**
  * Tonight's copy in `dir`, replacing one made earlier today, then only the newest KEEP are kept.
@@ -51,4 +64,4 @@ function nightly(store, dir, now) {
 const due = (last, now, quiet) =>
   !last?.at || !last.ok || now - last.at > 36 * HOUR || (quiet && now - last.at > 20 * HOUR);
 
-module.exports = { nightly, copyTo, due, day, KEEP };
+module.exports = { nightly, copyTo, due, day };

@@ -205,8 +205,10 @@ into a GitHub issue, with no keys, tokens, IP addresses or names.
   Downvote, decision, report and setting. Back up that folder and you've backed up everything.
 - **Backups are made for you.** Each night, before anything is deleted, a copy goes to
   `/config/backups` (the newest 7 are kept), and Settings → Status has a **Download backup**
-  button. A backup holds your app keys and tokens too, so keep it private. To restore one, stop the
-  container, put the copy in `/config` as `media-review.db`, and start it again.
+  button. A backup holds your app keys and tokens too, so keep it private (the nightly copies are
+  readable by their owner only). Sign-ins aren't in it, so after a restore everyone signs in again.
+  To restore one, stop the container, put the copy in `/config` as `media-review.db`, and start it
+  again.
 - **Your API keys stay on the server.** They're never sent to a browser.
 - **Nothing is deleted without you.** A title is only deleted after you Removed it and its Leaving
   Soon ran out. Deletion runs overnight, between 04:00 and 07:00 in the container's time zone.
@@ -225,7 +227,7 @@ options work:
 | `PUID` / `PGID` | `911` | The user the app runs as. Unraid: `99` / `100`. Linux: run `id`. |
 | `TZ` | `Etc/UTC` | Your time zone, like `America/Chicago`. Decides when "overnight" is, for deletions. |
 | `UMASK` | `022` | File permissions for new files. |
-| `SYNC_MINUTES` | `15` | How often to read Plex and Tautulli. |
+| `SYNC_MINUTES` | `15` | How often to read Plex and Tautulli: whole minutes, 1 to 60. |
 | `PORT` | `8485` | The port inside the container. |
 
 ## API for Media Ops

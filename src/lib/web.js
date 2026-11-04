@@ -162,8 +162,14 @@ function createApp({
   const cookie = (req, name, value, maxAge) =>
     `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure(req) ? '; Secure' : ''}`;
 
+  let pruned = 0;
   /** @param {Req} req @returns {Session | undefined} */
   const sessionOf = req => {
+    // Expired sign-ins and link tokens are cleared out, at most once an hour.
+    if (now() - pruned > 3600) {
+      pruned = now();
+      store.pruneExpired(now() - SESSION_DAYS * 86400, now() - LINK_MINUTES * 60);
+    }
     const token = cookiesOf(req).mr_session;
     return token ? store.session(token, now() - SESSION_DAYS * 86400) : undefined;
   };
@@ -234,6 +240,7 @@ function createApp({
   /** @type {Map<string, { at: number, token?: string, plexId?: string, servers?: any[] }>} */
   const setups = new Map();
   let wrongCodes = 0;
+  let pausedUntil = 0;
   /** @param {Req} req */
   const setupOf = req => {
     const s = setups.get(cookiesOf(req).mr_setup ?? '');
@@ -262,9 +269,13 @@ function createApp({
     if (apps.isSetUp()) return json(res, 409, { error: 'already set up' });
     if (m === 'POST' && p === '/api/setup/code') {
       const code = setupCode();
-      // Ten wrong codes and setup is closed until the container restarts with a new code.
-      if (!code || wrongCodes >= 10)
-        return json(res, 429, { error: 'too many wrong codes: restart the container for a new one' });
+      // Ten wrong codes pause setup for 15 minutes: guessing an 8-character code that way takes forever, and
+      // someone else on the network trying codes can't close it for good.
+      if (!code) return json(res, 429, { error: 'restart the container for a new code' });
+      if (now() < pausedUntil)
+        return json(res, 429, {
+          error: `too many wrong codes: try again in ${Math.ceil((pausedUntil - now()) / 60)} minutes, or restart the container`,
+        });
       const got = String((await readJson(req)).code ?? '')
         .trim()
         .toUpperCase()
@@ -273,6 +284,11 @@ function createApp({
       if (got.length !== want.length || !crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want))) {
         wrongCodes++;
         log(`setup: wrong setup code entered (${wrongCodes} of 10)`);
+        if (wrongCodes >= 10) {
+          wrongCodes = 0;
+          pausedUntil = now() + 15 * 60;
+          log('setup: paused for 15 minutes after 10 wrong codes');
+        }
         return json(res, 403, { error: 'wrong code' });
       }
       const id = crypto.randomBytes(32).toString('base64url');
@@ -289,7 +305,7 @@ function createApp({
       const url = cleanUrl(body.url);
       if (!server) return json(res, 400, { error: 'pick one of your servers' });
       if (!url) return json(res, 400, { error: 'that is not an http(s) address' });
-      const problem = await plexAt(url, s.token, server.machineId);
+      const problem = await plexAt(url, server.machineId);
       if (problem) return json(res, 502, { error: problem });
       apps.setPlex({ url, token: /** @type {string} */ (s.token), machineId: server.machineId, name: server.name });
       setups.clear();
@@ -308,13 +324,12 @@ function createApp({
   }
 
   // Is the Plex server at this address the one we mean? null if so, else what's wrong, in words.
-  /** @param {string} url @param {string} token @param {string} wantId the server's machine id */
-  async function plexAt(url, token, wantId) {
+  /** @param {string} url @param {string} wantId the server's machine id */
+  async function plexAt(url, wantId) {
     try {
-      const id = await fetchJson(f, 'Plex', join(url, '/identity'), {
-        headers: { 'X-Plex-Token': token },
-        timeoutMs: 8000,
-      });
+      // /identity answers without a token, so the Owner's Plex token never goes to an address before it's known
+      // to be this Plex server.
+      const id = await fetchJson(f, 'Plex', join(url, '/identity'), { timeoutMs: 8000 });
       const found = id?.MediaContainer?.machineIdentifier;
       return found === wantId ? null : 'that address is a different Plex server';
     } catch (e) {
@@ -367,7 +382,7 @@ function createApp({
     if (m === 'PUT' && sub === '/plex') {
       const url = cleanUrl((await readJson(req)).url);
       if (!url || !all.plex) return json(res, 400, { error: 'that is not an http(s) address' });
-      const problem = await plexAt(url, all.plex.token, all.plex.machineId);
+      const problem = await plexAt(url, all.plex.machineId);
       if (problem) return json(res, 502, { error: problem });
       apps.setPlexUrl(url);
       appsChanged();
@@ -395,6 +410,7 @@ function createApp({
         else {
           bot = await d.me();
           guilds = await d.guilds();
+          for (const [k, v] of discordSeen) if (now() - v.at >= 60) discordSeen.delete(k); // only the last minute's
           discordSeen.set(token, { at: now(), bot, guilds });
         }
       } catch (e) {
@@ -443,8 +459,12 @@ function createApp({
         // Only what happens from now on is announced; setting channels for the first time doesn't post the past.
         noticesFrom: had && all.discord?.noticesFrom ? all.discord.noticesFrom : now(),
         leavingDms: body.leavingDms !== false,
-        // Leaving Soon DMs: from when the bot was first saved (an older one: from its channels).
-        dmsFrom: all.discord?.dmsFrom ?? all.discord?.noticesFrom ?? now(),
+        // Leaving Soon DMs: from when the bot was first saved (an older one: from its channels), or from when
+        // they were turned back on, so friends don't hear of everything Removed while they were off.
+        dmsFrom:
+          all.discord?.leavingDms === false && body.leavingDms !== false
+            ? now()
+            : (all.discord?.dmsFrom ?? all.discord?.noticesFrom ?? now()),
       });
       appsChanged();
       log(`settings: Discord saved (${bot.username} in ${guild.name})`);
@@ -463,8 +483,14 @@ function createApp({
       const body = await readJson(req);
       const url = cleanUrl(body.url);
       if (!url) return json(res, 400, { error: 'that is not an http(s) address' });
-      const apiKey = String(body.apiKey ?? '').trim() || all[id]?.apiKey || '';
-      if (!apiKey) return json(res, 400, { error: 'enter its API key' });
+      // A blank key keeps the saved one, but only at the same host: a saved key is never sent somewhere new.
+      const saved = all[id];
+      const sameHost = saved && new URL(saved.url).host === new URL(url).host;
+      const apiKey = String(body.apiKey ?? '').trim() || (sameHost ? saved.apiKey : '');
+      if (!apiKey)
+        return json(res, 400, {
+          error: saved ? 'enter its API key again: the address has a new host' : 'enter its API key',
+        });
       if (a[2]) {
         try {
           return json(res, 200, { ok: true, version: await probe(id, { url, apiKey }, f) });
@@ -1065,7 +1091,12 @@ function createApp({
       await route(req, res, url);
     } catch (e) {
       log(`${req.method} ${url.pathname} failed: ${e.message}`);
-      if (!res.headersSent) json(res, 502, { error: e.message });
+      // A request too large, or a bad %-escape in the address, is the caller's; anything else is an app that
+      // didn't answer. Its details go to the Owner (and setup, and Media Ops), not to anyone else.
+      const status = e.status ?? (e instanceof URIError ? 400 : 502);
+      const detailed = status < 500 || /^\/api\/(owner|v1|setup)(\/|$)/.test(url.pathname);
+      if (!res.headersSent)
+        json(res, status, { error: detailed ? e.message : 'Something went wrong. The Owner can see why in the log.' });
       else res.destroy();
     }
   };
