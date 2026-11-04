@@ -319,9 +319,23 @@ function health() {
 }
 /** @typedef {ReturnType<typeof health>} Health */
 
+// Discord's limits: a message over them is refused outright, so they are cut to fit.
+/** @param {string | undefined} text @param {number} max */
+const cut = (text, max) => (text && text.length > max ? `${text.slice(0, max - 1)}…` : text);
+/** @param {Message} m @returns {Message} */
+const fit = m => ({
+  ...m,
+  ...(m.content ? { content: cut(m.content, 2000) } : {}),
+  ...(m.embeds
+    ? { embeds: m.embeds.map(e => ({ ...e, title: cut(e.title, 256), description: cut(e.description, 4096) })) }
+    : {}),
+});
+
 /**
- * Send what hasn't gone yet, oldest first. A failure stops this round (keeping the order) and is kept on the
- * notice for Settings; a DM that can't be delivered (they left, or block DMs) is given up after 3 tries.
+ * Send what hasn't gone yet, oldest first for each place it goes. Discord itself failing (unreachable, the
+ * token refused, rate limited) stops the round, to be tried again in a minute. A message Discord refuses (its
+ * channel deleted, no access, they block DMs) holds up only later ones to the same place, and is given up after
+ * 3 tries, so one bad message never blocks the rest. The last error is kept on the notice for Settings.
  * @param {{ store: Store, api: import('./discord').Rest, channels: { announce?: string, owner?: string },
  *   now: number, log: (msg: string) => void }} ctx
  * @returns {Promise<{ sent: number, error: string | null }>}
@@ -329,10 +343,15 @@ function health() {
 async function deliver(ctx) {
   const { store, api } = ctx;
   let sent = 0;
+  /** @type {string | null} */
+  let error = null;
   /** @type {Map<string, string>} Discord user → DM channel */
   const dms = new Map();
+  /** @type {Set<string>} places a message is waiting for, this round */
+  const held = new Set();
   for (const n of store.unsentNotices()) {
-    const message = { ...JSON.parse(n.message), allowed_mentions: { parse: [] } };
+    if (held.has(n.target)) continue;
+    const message = { ...fit(JSON.parse(n.message)), allowed_mentions: { parse: [] } };
     try {
       let channel = n.target === 'announce' ? ctx.channels.announce : n.target === 'owner' ? ctx.channels.owner : null;
       if (n.target.startsWith('dm:')) {
@@ -349,15 +368,21 @@ async function deliver(ctx) {
       sent++;
     } catch (e) {
       store.noticeFailed(n.id, e.message);
-      if (n.target.startsWith('dm:')) {
-        if (n.tries + 1 >= 3) store.noticeSent(n.id, ctx.now);
-        continue; // one person's DMs don't hold up the rest
+      const refused = e.status >= 400 && e.status < 500 && e.status !== 429;
+      if (!refused) {
+        if (!n.error) ctx.log(`Discord: couldn't post (${e.message}); trying again in a minute`);
+        return { sent, error: e.message };
       }
-      if (!n.error) ctx.log(`Discord: couldn't post (${e.message}); trying again in a minute`);
-      return { sent, error: e.message };
+      if (n.tries + 1 >= 3) {
+        store.noticeSent(n.id, ctx.now);
+        ctx.log(
+          `Discord: gave up on a message to ${n.target.startsWith('dm:') ? 'a DM' : `the ${n.target} channel`} (${e.message})`,
+        );
+      } else held.add(n.target);
+      if (!n.target.startsWith('dm:')) error = e.message;
     }
   }
-  return { sent, error: null };
+  return { sent, error };
 }
 
 module.exports = { collect, deliver, health, posterOk, posterSig };

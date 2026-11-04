@@ -14,9 +14,10 @@ const { castDownvote, reviewQueue } = require('../lib/review');
 const NOW = 1_800_000_000;
 const CODE = 'K7QF-2M9X';
 
-// plex.tv: pin 1 is the Owner (owns "Tower"), pin 2 a friend who owns no server.
+// plex.tv: pin 1 is the Owner (owns "Tower"), pin 2 a friend who owns no server. plexSignIn picks which.
+let nextPin = 1;
 const fakePlex = /** @type {any} */ ({
-  createPin: async () => ({ id: 1, code: 'CODE' }),
+  createPin: async () => ({ id: nextPin, code: 'CODE' }),
   authUrl: () => 'https://app.plex.tv/auth#?code=CODE',
   pinToken: async (/** @type {number} */ id) => `token-${id}`,
   account: async (/** @type {string} */ token) =>
@@ -115,8 +116,8 @@ async function setup(opts = {}) {
   // Sign in through plex.tv as the account behind a pin (callback with that pin).
   /** @param {number} pin */
   const plexSignIn = async pin => {
+    nextPin = pin;
     await req('/auth/plex');
-    jar.mr_pin = String(pin);
     return req('/auth/plex/callback');
   };
   return {

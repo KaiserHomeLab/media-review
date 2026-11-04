@@ -16,7 +16,13 @@ async function runDeletions({ store, arrs, settings, now, log }) {
   const t = now();
   if (!inQuietWindow(t, settings.deleteHour)) return [];
   const deleted = [];
+  store.clearDeleting();
+  // Still Leaving Soon and due, asked again right before each step: the Owner may Keep it, or Objections send it
+  // back, while an earlier Title is being deleted.
+  /** @param {string} key */
+  const due = key => store.leavingSoon().some(x => x.title_key === key && x.ends_at <= t);
   for (const l of store.leavingSoon().filter(x => x.ends_at <= t)) {
+    if (!due(l.title_key)) continue;
     const title = store.title(l.title_key);
     const name = title?.title ?? l.title_key;
     // Apps it's already gone from, if an earlier night half-worked.
@@ -41,23 +47,29 @@ async function runDeletions({ store, arrs, settings, now, log }) {
       stop(`Plex has no ${title.kind === 'movie' ? 'TMDB' : 'TVDB'} id for it, so ${app} can't be asked`);
       continue;
     }
-    // Every copy in every app that holds this kind: a show may be in the TV or the anime Sonarr.
+    // Every copy in every app that holds this kind: a show may be in the TV or the anime Sonarr. While this runs,
+    // Keep and Objections on this Title wait; one that came in just before stops it here.
+    if (!due(l.title_key)) continue;
+    store.setDeleting(l.title_key, true);
     /** @type {string[]} */
     const failures = [];
-    for (const a of targets) {
-      try {
-        for (const id of await a.find(ids)) {
-          await a.delete(id);
-          if (!from.includes(a.name)) from.push(a.name);
+    try {
+      for (const a of targets) {
+        try {
+          for (const id of await a.find(ids)) {
+            await a.delete(id);
+            if (!from.includes(a.name)) from.push(a.name);
+          }
+        } catch (e) {
+          failures.push(`${a.name}: ${e.message}`);
         }
-      } catch (e) {
-        failures.push(`${a.name}: ${e.message}`);
       }
+    } finally {
+      store.setDeleting(l.title_key, false);
     }
     if (failures.length) stop(failures.join('; '));
     else if (!from.length) stop(`not found in ${targets.map(a => a.name).join(' or ')}, so nothing was deleted`);
-    else {
-      store.deleted(l.title_key, t, from);
+    else if (store.deleted(l.title_key, t, from)) {
       deleted.push(l.title_key);
       log(`Deleted ${name} from ${from.join(' and ')}, with an import-list exclusion`);
     }

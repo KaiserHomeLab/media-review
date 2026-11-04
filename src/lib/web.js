@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { Readable } = require('node:stream');
+const { Readable, pipeline } = require('node:stream');
 const {
   castDownvote,
   withdrawDownvote,
@@ -144,7 +144,14 @@ function createApp({
         .split(';')
         .map(c => c.trim().split('='))
         .filter(([k, v]) => k && v)
-        .map(([k, v]) => [k, decodeURIComponent(v)]),
+        .map(([k, v]) => {
+          // Another app on this host can set cookies here too: one that isn't ours to decode is skipped.
+          try {
+            return [k, decodeURIComponent(v)];
+          } catch {
+            return [k, ''];
+          }
+        }),
     );
   /** @param {Req} req */
   const secure = req => {
@@ -177,20 +184,31 @@ function createApp({
     base() ?? `${secure(req) ? 'https' : 'http'}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
 
   // ------------------------------------------------------------------ sign in with Plex
+  // The plex.tv pin each sign-in started, behind a random value in that browser's cookie: plex.tv pin ids are
+  // numbers anyone could try, so the cookie never carries one. Each works once, for 15 minutes.
+  const PIN_SECONDS = 900;
+  /** @type {Map<string, { pinId: number, at: number }>} */
+  const pins = new Map();
   /** @param {Req} req @param {Res} res */
   async function signInStart(req, res) {
     // Before first setup, signing in is only for the Owner linking Plex, with the setup code.
     if (!apps.isSetUp() && !setupOf(req)) return redirect(res, '/setup.html');
     const pin = await plex.createPin();
+    for (const [k, v] of pins) if (now() - v.at > PIN_SECONDS) pins.delete(k);
+    const nonce = crypto.randomBytes(24).toString('base64url');
+    pins.set(nonce, { pinId: pin.id, at: now() });
     redirect(res, plex.authUrl(pin.code, `${baseUrl(req)}/auth/plex/callback`), [
-      cookie(req, 'mr_pin', String(pin.id), 900),
+      cookie(req, 'mr_pin', nonce, PIN_SECONDS),
     ]);
   }
 
   /** @param {Req} req @param {Res} res */
   async function signInCallback(req, res) {
     const clearPin = cookie(req, 'mr_pin', '', 0);
-    const pinId = Number(cookiesOf(req).mr_pin);
+    const nonce = cookiesOf(req).mr_pin ?? '';
+    const started = pins.get(nonce);
+    pins.delete(nonce);
+    const pinId = started && now() - started.at <= PIN_SECONDS ? started.pinId : 0;
     const token = pinId ? await plex.pinToken(pinId) : null;
     if (!token) return redirect(res, apps.isSetUp() ? '/?signin=failed' : '/setup.html?signin=failed', [clearPin]);
     if (!apps.isSetUp()) return setupSignedIn(req, res, token, clearPin);
@@ -716,10 +734,43 @@ function createApp({
       const t = store.linkToken(dl[1], now() - LINK_MINUTES * 60);
       if (!t)
         return json(res, 404, { error: 'That link has expired or was used. Use /link in Discord for a new one.' });
-      if (m === 'GET') return json(res, 200, { discordName: t.discord_name });
+      // The Discord account this Plex account is connected to now, if it's another one: connecting replaces it.
+      const before = store.linkFor(s.plexId);
+      const replaces = before && before.discord_id !== t.discord_id ? before : null;
+      if (m === 'GET')
+        return json(res, 200, {
+          discordName: t.discord_name,
+          replaces: replaces ? (replaces.discord_name ?? 'another account') : null,
+        });
       if (m === 'POST') {
+        // Never replaced without the page having said so (someone may have sent them this link).
+        if (replaces && (await readJson(req)).replace !== true)
+          return json(res, 409, {
+            error: 'This Plex account is connected to another Discord account. Reload to see which.',
+          });
+        const who = store.voter(s.plexId)?.username ?? 'the Owner';
         store.link(t.discord_id, s.plexId, t.discord_name, now());
-        log(`Discord linked: ${t.discord_name ?? t.discord_id} is ${store.voter(s.plexId)?.username ?? 'the Owner'}`);
+        log(
+          `Discord linked: ${t.discord_name ?? t.discord_id} is ${who}${replaces ? ` (was ${replaces.discord_name ?? replaces.discord_id})` : ''}`,
+        );
+        // Both accounts hear of it, privately: the old one so a link nobody meant doesn't go unnoticed.
+        store.addNotice(
+          `linked:${t.discord_id}:${now()}`,
+          `dm:${t.discord_id}`,
+          {
+            content: `Your Discord is now connected to ${who} on Media Review. Not you? Use /unlink.`,
+          },
+          now(),
+        );
+        if (replaces)
+          store.addNotice(
+            `unlinked:${replaces.discord_id}:${now()}`,
+            `dm:${replaces.discord_id}`,
+            {
+              content: `Your Discord was disconnected from ${who} on Media Review: ${t.discord_name ?? 'another Discord account'} was connected instead. Not what you wanted? Sign in to Media Review and use /link again.`,
+            },
+            now(),
+          );
         return json(res, 200, { linked: true, discordName: t.discord_name });
       }
     }
@@ -866,6 +917,9 @@ function createApp({
       const r = (d[1] === 'leaving-soon' ? store.isLeaving(key) : store.isQueued(key))
         ? keep(store, key, now())
         : { ok: false, error: d[1] === 'leaving-soon' ? 'not-leaving' : 'not-queued' };
+      // Shown as it is, here and in Media Ops.
+      if (!r.ok && r.error === 'being-deleted')
+        return json(res, 409, { error: "It's being deleted right now: tonight's deletion has already started on it." });
       if (!r.ok) return json(res, 409, { error: r.error });
       log(`${d[1] === 'leaving-soon' ? 'Keep after all' : 'Keep'} (${via}): ${name}`);
       if (d[1] === 'leaving-soon') leavingChanged();
@@ -980,8 +1034,12 @@ function createApp({
     res.writeHead(200, {
       'Content-Type': up.headers.get('content-type') ?? 'image/jpeg',
       'Cache-Control': 'private, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
     });
-    Readable.fromWeb(/** @type {any} */ (up.body)).pipe(res);
+    // Plex can drop the connection halfway (a restart): that ends this response, and nothing else.
+    pipeline(Readable.fromWeb(/** @type {any} */ (up.body)), res, e => {
+      if (e && e.code !== 'ERR_STREAM_PREMATURE_CLOSE') log(`poster ${titleKey}: ${e.message}`); // not a browser leaving
+    });
   }
 
   /** @param {Res} res @param {string} p */
@@ -997,7 +1055,7 @@ function createApp({
     });
     // Pages carry the Owner's appearance; everything else goes as it is.
     if (path.extname(file) === '.html') return res.end(renderPage(fs.readFileSync(file, 'utf8'), look.read()));
-    fs.createReadStream(file).pipe(res);
+    pipeline(fs.createReadStream(file), res, () => {});
   }
 
   /** @param {Req} req @param {Res} res */

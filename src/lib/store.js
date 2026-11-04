@@ -126,6 +126,7 @@ function openStore(file) {
   addColumn('review_queue', 'sent_back', 'INTEGER NOT NULL DEFAULT 0'); // back by Objections
   addColumn('leaving_soon', 'objections_closed', 'INTEGER NOT NULL DEFAULT 0'); // its second Leaving Soon
   addColumn('voters', 'removed_at', 'INTEGER'); // the server is no longer shared with them: their votes don't count
+  addColumn('leaving_soon', 'deleting', 'INTEGER NOT NULL DEFAULT 0'); // the overnight run is deleting it right now
   addColumn('voters', 'reminders', 'INTEGER NOT NULL DEFAULT 1'); // Leaving Soon DMs for what they started; 0 = off
   addColumn('problem_reporters', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
   addColumn('bring_back_asks', 'dismissed', 'INTEGER NOT NULL DEFAULT 0'); // cleared from their own list
@@ -139,12 +140,13 @@ function openStore(file) {
     );
   }
 
-  /** @param {() => void} fn */
+  /** @template T @param {() => T} fn @returns {T} */
   const tx = fn => {
     db.exec('BEGIN');
     try {
-      fn();
+      const out = fn();
       db.exec('COMMIT');
+      return out;
     } catch (e) {
       db.exec('ROLLBACK');
       throw e;
@@ -425,6 +427,15 @@ function openStore(file) {
       ),
     /** @param {string} titleKey */
     isLeaving: titleKey => !!db.prepare('SELECT 1 FROM leaving_soon WHERE title_key = ?').get(titleKey),
+    // The overnight run is deleting it right now: Keep and Objections wait (its files may already be going).
+    /** @param {string} titleKey */
+    isDeleting: titleKey =>
+      !!db.prepare('SELECT 1 FROM leaving_soon WHERE title_key = ? AND deleting = 1').get(titleKey),
+    /** @param {string} titleKey @param {boolean} on */
+    setDeleting: (titleKey, on) =>
+      void db.prepare('UPDATE leaving_soon SET deleting = ? WHERE title_key = ?').run(on ? 1 : 0, titleKey),
+    // A run that stopped halfway (a restart) leaves nothing marked.
+    clearDeleting: () => void db.prepare('UPDATE leaving_soon SET deleting = 0 WHERE deleting = 1').run(),
     // Queue a Title and freeze its Downvotes with the Vote Weight each had at that moment.
     /**
      * @param {string} titleKey @param {number} now
@@ -521,7 +532,7 @@ function openStore(file) {
       }),
     /**
      * @returns {Array<{ title_key: string, removed_at: number, ends_at: number, delete_error: string | null,
-     *   deleted_from: string | null, objections_closed: number }>} soonest first
+     *   deleted_from: string | null, objections_closed: number, deleting: number }>} soonest first
      */
     leavingSoon: () => /** @type {any} */ (db.prepare('SELECT * FROM leaving_soon ORDER BY ends_at, title_key').all()),
     // A try to delete it didn't finish: why, and the apps it is already gone from (comma-separated).
@@ -535,6 +546,8 @@ function openStore(file) {
     /** @param {string} titleKey @param {number} now @param {string[]} deletedFrom */
     deleted: (titleKey, now, deletedFrom) =>
       tx(() => {
+        // Kept after all, or sent back, since: it isn't marked deleted.
+        if (!db.prepare('SELECT 1 FROM leaving_soon WHERE title_key = ?').get(titleKey)) return false;
         db.prepare(
           `INSERT INTO title_votes (title_key, at, voter_id, kind, vote_weight)
            SELECT title_key, ?, voter_id, 'objection', vote_weight FROM objections WHERE title_key = ?`,
@@ -551,6 +564,7 @@ function openStore(file) {
           deletedFrom.join(','),
         );
         db.prepare('UPDATE titles SET seen = 0 WHERE rating_key = ?').run(titleKey);
+        return true;
       }),
     /** @param {string} titleKey @returns {Array<{ at: number, deleted_from: string }>} */
     deletionsOf: titleKey =>

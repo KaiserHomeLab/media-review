@@ -137,3 +137,48 @@ test('a Title Kept after all is never deleted', async () => {
   assert.ok(!s.radarr.calls.some(c => c.startsWith('DELETE')));
   assert.equal(s.store.deletionsOf('m1').length, 0);
 });
+
+test('kept while tonight runs: not deleted; and the one being deleted right now cannot be kept', async () => {
+  const store = openStore(':memory:');
+  store.replaceTitles([
+    { ratingKey: 'a', kind: 'movie', title: 'First', tmdbId: '1' },
+    { ratingKey: 'b', kind: 'movie', title: 'Second', tmdbId: '2' },
+  ]);
+  for (const key of ['a', 'b']) store.remove(key, ENDS - 14 * 86400, ENDS);
+  const deletedIds = /** @type {number[]} */ ([]);
+  /** @type {string[]} */
+  const during = [];
+  // A Radarr that is slow to delete: while "First" goes, the Owner Keeps both.
+  const radarr = /** @type {any} */ ({
+    name: 'Radarr',
+    handles: (/** @type {string} */ kind) => kind === 'movie',
+    find: async (/** @type {{ tmdbId: string }} */ ids) => [Number(ids.tmdbId)],
+    delete: async (/** @type {number} */ id) => {
+      if (id === 1) {
+        during.push(`keep First: ${JSON.stringify(keep(store, 'a', ENDS))}`);
+        during.push(`keep Second: ${JSON.stringify(keep(store, 'b', ENDS))}`);
+      }
+      deletedIds.push(id);
+    },
+  });
+  const logs = /** @type {string[]} */ ([]);
+  const out = await runDeletions({
+    store,
+    arrs: [radarr],
+    settings: DEFAULTS,
+    now: () => at('2026-11-12 04:15'),
+    log: m => logs.push(m),
+  });
+  assert.deepEqual(during, ['keep First: {"ok":false,"error":"being-deleted"}', 'keep Second: {"ok":true}']);
+  assert.deepEqual(out, ['a']);
+  assert.deepEqual(deletedIds, [1], 'Second was never sent to Radarr');
+  assert.ok(!store.isHeldBack('b'));
+  assert.equal(store.isDeleting('a'), false);
+});
+
+test('marked deleted only while still Leaving Soon', () => {
+  const s = setup();
+  keep(s.store, 'm1', ENDS - 60);
+  assert.equal(s.store.deleted('m1', ENDS, ['Radarr']), false);
+  assert.ok(!s.store.isHeldBack('m1'));
+});

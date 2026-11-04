@@ -89,12 +89,13 @@ function evaluate(store, s, titleKey, now, bases = currentBaseWeights(store, s, 
 /**
  * @param {Store} store @param {Settings} s @param {string} voterId @param {string} titleKey @param {number} now
  * @returns {{ ok: true, sentBack: boolean }
- *   | { ok: false, error: 'not-leaving' | 'objections-closed' | 'downvoted' | 'already-objected' }}
+ *   | { ok: false, error: 'not-leaving' | 'being-deleted' | 'objections-closed' | 'downvoted' | 'already-objected' }}
  */
 function object(store, s, voterId, titleKey, now) {
   const leaving = store.leavingSoon().find(l => l.title_key === titleKey);
   const title = store.title(titleKey);
   if (!leaving || !title) return { ok: false, error: 'not-leaving' };
+  if (leaving.deleting) return { ok: false, error: 'being-deleted' };
   // Sent back once already, and Removed again: this Leaving Soon takes no Objections.
   if (leaving.objections_closed) return { ok: false, error: 'objections-closed' };
   // They asked for it to go; they can't also ask for it to stay.
@@ -159,9 +160,10 @@ function applyWatches(store) {
 }
 
 // The Owner's Keep, from the Review Queue or, as "Keep after all", while the Title is Leaving Soon.
-/** @param {Store} store @param {string} titleKey @param {number} now @returns {{ ok: true } | { ok: false, error: 'not-queued' }} */
+/** @param {Store} store @param {string} titleKey @param {number} now @returns {{ ok: true } | { ok: false, error: 'not-queued' | 'being-deleted' }} */
 function keep(store, titleKey, now) {
   if (!store.isQueued(titleKey) && !store.isLeaving(titleKey)) return { ok: false, error: 'not-queued' };
+  if (store.isDeleting(titleKey)) return { ok: false, error: 'being-deleted' };
   store.keep(titleKey, now);
   return { ok: true };
 }

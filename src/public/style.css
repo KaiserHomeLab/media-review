@@ -270,6 +270,10 @@ h2 .count {
   border-color: color-mix(in srgb, var(--critical) 50%, var(--line));
   color: var(--critical);
 }
+.notice.warn {
+  border-color: color-mix(in srgb, var(--downvote) 50%, var(--line));
+  color: var(--text-primary);
+}
 
 /* ------------------------------------------------------------------ controls */
 .btn {
