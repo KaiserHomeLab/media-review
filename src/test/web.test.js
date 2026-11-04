@@ -951,3 +951,44 @@ test('Title history: the Owner searches any Title and gets its story; nobody els
   );
   assert.equal((await req('/api/owner/titles/nope/history', { cookie: owner })).status, 404);
 });
+
+test('errors: the caller’s mistakes get 4xx; an app failing gets 502, with details only for the Owner', async () => {
+  const failing = {
+    ...fakePlex,
+    episodes: async () => Promise.reject(new Error('Plex answered HTTP 500 at http://10.0.0.5')),
+  };
+  const { req, signIn, store } = await setup({ plex: failing });
+  store.replaceTitles([
+    { ratingKey: 'm1', kind: 'movie', title: 'Dull Movie', year: 2020 },
+    { ratingKey: 's1', kind: 'show', title: 'Slow Show' },
+  ]);
+  const [owner, alice] = await Promise.all([1, 2].map(async pin => (await signIn(pin)).cookie));
+  const bad = await req('/api/owner/titles/%E0%A4%A/history', { cookie: owner });
+  assert.equal(bad.status, 400, 'a bad %-escape');
+  const big = await req('/api/owner/check-updates', {
+    method: 'PUT',
+    cookie: owner,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ x: 'y'.repeat(70 * 1024) }),
+  });
+  assert.equal(big.status, 413);
+  const episodes = await req('/api/titles/s1/episodes', { cookie: alice });
+  assert.equal(episodes.status, 502);
+  assert.doesNotMatch(await episodes.text(), /10\.0\.0\.5/, 'a friend sees no addresses or app details');
+});
+
+test('expired sign-ins and Discord link tokens are cleared out', async () => {
+  const { req, store } = await setup();
+  store.addSession('old-session', 'a', false, NOW - 31 * 86400);
+  store.addSession('new-session', 'a', false, NOW - 86400);
+  store.addLinkToken('old-link-token-001', 'd-x', null, NOW - 31 * 60);
+  await req('/api/me', { cookie: 'mr_session=new-session' });
+  assert.deepEqual(
+    store.db
+      .prepare('SELECT token FROM sessions')
+      .all()
+      .map(r => r.token),
+    ['new-session'],
+  );
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM link_tokens').get()?.n, 0);
+});

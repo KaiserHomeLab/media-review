@@ -101,4 +101,4 @@ function fromForm(form) {
   return out;
 }
 
-module.exports = { ruleSettings, toForm, fromForm, LIMITS };
+module.exports = { ruleSettings, toForm, fromForm };

@@ -19,6 +19,8 @@ test('each night a copy that opens as Media Review; a second one the same day re
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const store = openStore(':memory:');
   store.upsertVoter({ plexId: 'a', username: 'alice' });
+  store.addSession('tok-a', 'a', false, NOW);
+  store.addLinkToken('link-token-0001', 'd-a', null, NOW);
   fs.writeFileSync(path.join(dir, 'notes.txt'), 'not a backup: left alone');
 
   const first = backup.nightly(store, dir, NOW);
@@ -26,7 +28,11 @@ test('each night a copy that opens as Media Review; a second one the same day re
   assert.equal(first.kept, 1);
   const copy = openStore(path.join(dir, first.file));
   assert.equal(copy.voter('a')?.username, 'alice');
+  assert.equal(copy.session('tok-a', 0), undefined, 'sign-ins are left out');
+  assert.equal(copy.db.prepare('SELECT COUNT(*) AS n FROM link_tokens').get()?.n, 0);
   copy.close();
+  assert.equal(fs.statSync(path.join(dir, first.file)).mode & 0o777, 0o600, 'readable by its owner only');
+  assert.ok(store.session('tok-a', 0), 'the live database keeps them');
 
   store.upsertVoter({ plexId: 'b', username: 'bob' });
   backup.nightly(store, dir, NOW + HOUR);

@@ -82,12 +82,10 @@ function quietTime(t, hour) {
   return Math.floor(q.getTime() / 1000);
 }
 
-// Deletions run only in the three hours from `hour`:00. A missed night waits for the next one.
+// Deletions run only in the three hours from `hour`:00, past midnight too (22:00 runs to 01:00). A missed night
+// waits for the next one.
 /** @param {number} t unix seconds @param {number} hour */
-const inQuietWindow = (t, hour) => {
-  const h = new Date(t * 1000).getHours();
-  return h >= hour && h < hour + 3;
-};
+const inQuietWindow = (t, hour) => (new Date(t * 1000).getHours() - hour + 24) % 24 < 3;
 
 // Objections carry the Vote Weight each Voter's Downvote would. They send a Title back once their total
 // reaches the Objection bar: a fixed amount, whatever the Audience.

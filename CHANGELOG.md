@@ -8,11 +8,21 @@ number, a fix the last one.
 
 ### Security
 
+- A saved API key is only reused at the same host. Change an app's address to a new host and its key must be typed again. The Owner's Plex token is no longer sent to a new Plex address before that address shows it is the same server.
+- Backups leave out sign-ins and Discord link tokens, and the nightly copies are readable by their owner only.
+- The diagnostics short report leaves out your Plex and Discord server names.
+- In CI, pull request builds no longer get publishing permissions: publishing is its own job, for main and version tags only. The smoke test checks the Node inside the image is 24 or later.
 - Signing in with Plex can no longer be taken over by someone who knows or guesses the number of a recent sign-in. The browser's cookie now holds a random value, Media Review keeps the plex.tv pin itself, and each sign-in works once, for 15 minutes.
 - Connecting Discord with a link someone else made is harder to fall for. The page warns not to connect a link you didn't make yourself. An existing connection is replaced only after the page says so, and the old Discord account gets a DM about it.
 
 ### Fixed
 
+- A late overnight deletion hour (21:00 or later) now gets its full three hours, running past midnight. Before, it was cut short at midnight.
+- A `SYNC_MINUTES` that isn't a whole number from 1 to 60 (say `15m`) falls back to 15. Before, it made the sync run nonstop.
+- Turning Leaving Soon DMs back on no longer DMs friends about everything Removed while they were off.
+- Ten wrong setup codes pause setup for 15 minutes, rather than closing it until a restart.
+- Errors from a request (too large, a bad address) get the right status, and friends and visitors see a generic message instead of app details.
+- Expired sign-ins and Discord link tokens are cleared out.
 - A Title kept, or sent back by Objections, while tonight's deletions are running is no longer deleted. While a Title is actually being deleted, Keep and Objections on it are refused with a message saying so.
 - One Discord message that keeps failing (for a deleted channel, a channel the bot lost access to, or one over Discord's length limit) no longer blocks every later message. Messages are trimmed to Discord's limits. One Discord refuses is given up after 3 tries, and holds up only later messages to the same place.
 - Plex dropping a poster download halfway no longer crashes Media Review.

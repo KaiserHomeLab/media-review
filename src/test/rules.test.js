@@ -155,6 +155,15 @@ test('deletions only run between 04:00 and 07:00', () => {
   assert.equal(inQuietWindow(at('2026-11-12 13:00'), 4), false);
 });
 
+test('a late deletion hour runs its three hours past midnight', () => {
+  assert.equal(inQuietWindow(at('2026-11-12 21:59'), 22), false);
+  assert.equal(inQuietWindow(at('2026-11-12 22:00'), 22), true);
+  assert.equal(inQuietWindow(at('2026-11-13 00:30'), 22), true);
+  assert.equal(inQuietWindow(at('2026-11-13 00:59'), 22), true);
+  assert.equal(inQuietWindow(at('2026-11-13 01:00'), 22), false);
+  assert.equal(inQuietWindow(at('2026-11-13 01:30'), 23), true);
+});
+
 // ------------------------------------------------------------------ 0011: editable rules
 const { sampleKind } = require('../lib/rules');
 

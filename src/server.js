@@ -179,7 +179,9 @@ const bot = botRunner({
 });
 bot.refresh();
 
-const syncMinutes = Math.max(1, Number(process.env.SYNC_MINUTES ?? 15));
+// Whole minutes, 1 to 60; anything else (say "15m") is the default, so a typo can't make it sync nonstop or skip
+// the night's deletion window.
+const syncMinutes = (n => (Number.isInteger(n) && n >= 1 && n <= 60 ? n : 15))(Number(process.env.SYNC_MINUTES ?? 15));
 const app = createApp({
   store,
   plex,

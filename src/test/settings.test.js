@@ -50,6 +50,8 @@ const fakeFetch = async (url, init = {}) => {
       ]);
   }
   if (u.pathname !== '/identity') return new Response('', { status: 404 });
+  // The Owner's Plex token never goes to an address before it is known to be their Plex.
+  if (/** @type {any} */ (init.headers)?.['X-Plex-Token']) throw new Error('the Plex token was sent to /identity');
   if (u.hostname === 'plex') return new Response(JSON.stringify({ MediaContainer: { machineIdentifier: 'tower-id' } }));
   if (u.hostname === 'other') return new Response(JSON.stringify({ MediaContainer: { machineIdentifier: 'not-it' } }));
   throw new Error('connect ECONNREFUSED');
@@ -57,6 +59,7 @@ const fakeFetch = async (url, init = {}) => {
 
 /** @param {{ setUp?: boolean }} [opts] */
 async function setup(opts = {}) {
+  const clock = { t: NOW };
   const store = openStore(':memory:');
   const apps = appSettings(store);
   if (opts.setUp) apps.setPlex({ url: 'http://plex:32400', token: 'token-1', machineId: 'tower-id', name: 'Tower' });
@@ -71,7 +74,7 @@ async function setup(opts = {}) {
     plex: fakePlex,
     machineId: async () => apps.read().plex?.machineId ?? '',
     settings: rules.values,
-    now: () => NOW,
+    now: () => clock.t,
     log: () => {},
     publicDir: path.join(__dirname, '..', 'public'),
     setupCode: () => code,
@@ -131,6 +134,7 @@ async function setup(opts = {}) {
     changes: () => changes,
     code: () => code,
     reset: () => (jar = {}),
+    clock,
   };
 }
 
@@ -147,7 +151,7 @@ test('a fresh install sends sign-in to setup, and setup starts with the code fro
   ]);
 });
 
-test('a wrong setup code is refused, and ten close setup until a restart', async () => {
+test('a wrong setup code is refused, and ten pause setup for 15 minutes', async () => {
   const s = await setup();
   assert.deepEqual(await s.body(await s.req('/api/setup/code', { method: 'POST', body: { code: 'NOPE-NOPE' } })), [
     403,
@@ -156,6 +160,9 @@ test('a wrong setup code is refused, and ten close setup until a restart', async
   for (let i = 0; i < 9; i++) await s.req('/api/setup/code', { method: 'POST', body: { code: 'nope' } });
   const [status] = await s.body(await s.req('/api/setup/code', { method: 'POST', body: { code: CODE } }));
   assert.equal(status, 429, 'even the right code, after ten wrong ones');
+  s.clock.t += 16 * 60;
+  const [after] = await s.body(await s.req('/api/setup/code', { method: 'POST', body: { code: CODE } }));
+  assert.equal(after, 200, 'fifteen minutes later the right code works');
 });
 
 test('code, Plex sign-in, pick the server: Plex is linked and the Owner is signed in', async () => {
@@ -232,7 +239,7 @@ test('only the Owner reaches Settings', async () => {
   );
 });
 
-test('an app is saved with its key, the key never comes back, and a blank key keeps the saved one', async () => {
+test('an app is saved with its key, the key never comes back, and a blank key keeps the saved one at the same host', async () => {
   const s = await ownerSignedIn();
   const put = (/** @type {any} */ b) => s.req('/api/owner/settings/apps/radarr', { method: 'PUT', body: b });
   assert.deepEqual(await s.body(await put({ url: 'http://radarr:7878' })), [400, { error: 'enter its API key' }]);
@@ -248,8 +255,18 @@ test('an app is saved with its key, the key never comes back, and a blank key ke
   const radarr = JSON.parse(text).apps.find((/** @type {any} */ a) => a.id === 'radarr');
   assert.deepEqual([radarr.url, radarr.hasKey, radarr.label], ['http://radarr:7878', true, 'Radarr']);
 
-  assert.deepEqual(await s.body(await put({ url: 'http://radarr2:7878', apiKey: '' })), [200, { saved: true }]);
-  assert.deepEqual(s.apps.read().radarr, { url: 'http://radarr2:7878', apiKey: 'secret-key' });
+  assert.deepEqual(await s.body(await put({ url: 'http://radarr:7878/radarr', apiKey: '' })), [200, { saved: true }]);
+  assert.deepEqual(s.apps.read().radarr, { url: 'http://radarr:7878/radarr', apiKey: 'secret-key' }, 'same host');
+  // Never sent to a new host without being typed again.
+  assert.deepEqual(await s.body(await put({ url: 'http://elsewhere:7878', apiKey: '' })), [
+    400,
+    { error: 'enter its API key again: the address has a new host' },
+  ]);
+  const tried = await s.req('/api/owner/settings/apps/radarr/test', {
+    method: 'POST',
+    body: { url: 'http://elsewhere:7878', apiKey: '' },
+  });
+  assert.equal(tried.status, 400);
   assert.equal(s.changes(), 2);
 });
 
@@ -480,6 +497,15 @@ test("Discord in Settings: Test lists the bot's servers, Save needs one of them,
   // a blank token keeps the saved one
   const again = await s.req('/api/owner/settings/discord/test', { method: 'POST', body: { token: '' } });
   assert.equal(again.status, 200);
+  // Leaving Soon DMs off for a week, then on again: they start from now, not from a week of Removes.
+  const d = /** @type {any} */ (s.apps.read().discord);
+  s.apps.setDiscord({ ...d, leavingDms: false, dmsFrom: NOW - 7 * 86400 });
+  const body = { token: '', guildId: 'g1', announceChannel: 'c1', ownerChannel: 'c2' };
+  await s.req('/api/owner/settings/discord', { method: 'PUT', body: { ...body, leavingDms: true } });
+  assert.equal(s.apps.read().discord?.dmsFrom, NOW);
+  s.apps.setDiscord({ .../** @type {any} */ (s.apps.read().discord), dmsFrom: NOW - 86400 });
+  await s.req('/api/owner/settings/discord', { method: 'PUT', body: { ...body, leavingDms: true } });
+  assert.equal(s.apps.read().discord?.dmsFrom, NOW - 86400, 'saved again while on: unchanged');
   await s.req('/api/owner/settings/discord', { method: 'DELETE', body: {} });
   assert.equal(s.apps.read().discord, undefined);
 });
